@@ -1,21 +1,29 @@
-#!/bin/bash
-#$1 = filename of reads without fastq.gz
-#$2 = tag size
+#!/bin/bash -e
 
-if [ ! -e "$1".fastq.gz ]; then
-  echo "$1"".fastq.gz does not exist!";
+if [ ! -e "$1" ]; then
+  echo "$1"" does not exist!";
+  exit 1;
+fi
+
+source "$1";
+
+if [ ! -e "$FASTQ" ]; then
+  echo "$FASTQ"" does not exist!";
   exit 1;
 fi
 
 #init the database
-rm -f "$1".db;
-sqlite3 "$1".db < /home/aarsta/analysis-utils/ChIP-seq-pipeline/sql/ChIP-seq.schema;
+echo "* Initialising the database";
+rm -f "$PROJECT".db;
+sqlite3 "$PROJECT".db < $PIPELINE_PATH/sql/Bis-seq.schema;
 
 #Convert fastq into csv, import into sqlite db
-gunzip -c "$1".fastq.gz  | awk 'NR%4==1 || NR%4==2' | sed -e 'N' -e 's/\n/,/' -e 's/^@//'>"$1".fastq.csv;
-echo -e ".separator \",\"\n.import $1.fastq.csv reads" | sqlite3 "$1".db
+echo "* Importing reads into the database";
+gunzip -c "$FASTQ"  | awk 'NR%4==1 || NR%4==2' | sed -e 's/ .*//' | sed -e 'N' -e 's/\n/,/' -e 's/^@//' >"$PROJECT".fastq.csv;
+echo -e ".separator \",\"\n.import $PROJECT.fastq.csv reads" | sqlite3 "$PROJECT".db
 
 #Record position of C residues in reads
+echo "* Importing C residues into the database";
 awk 'BEGIN {FS = ","}; {\
 num=split($2, tmp, "C"); \
 upto=0
@@ -23,69 +31,92 @@ for (i = 2; i <= num; i++) {\
    upto = upto + 1 + length(tmp[i-1]);
    print $1 "," upto;  \
 }
-}' "$1".fastq.csv > "$1".C.csv;
-echo -e ".separator \",\"\n.import $1.C.csv readsC" | sqlite3 "$1".db
-gzip "$1".fastq.csv
-gzip "$1".C.csv
+}' "$PROJECT".fastq.csv > "$PROJECT".C.csv;
+echo -e ".separator \",\"\n.import $PROJECT.C.csv readsC" | sqlite3 "$PROJECT".db
+gzip -f "$PROJECT".fastq.csv
+gzip -f "$PROJECT".C.csv
 
 #Convert C residues in reads to T
-gunzip -c "$1".fastq.gz | sed -e '2~4s/C/T/g' | gzip -c > "$1".conv.fastq.gz;
+echo "* Bisulfite converting reads";
+gunzip -c "$FASTQ" | sed -e 's/ .*//' -e '2~4s/C/T/g' | gzip -c > "$PROJECT".conv.fastq.gz;
 
-#map against plus bisulfite genome (no rc)
-gunzip -c "$1".conv.fastq.gz | bowtie --norc --best -y -p 7 -v 3 --un unaligned.plus.fastq -m 1 --max multiple.plus.fastq --strata /home/aarsta/data/genome/hg18/bowtie/bis.hg18.plus - 2> mapping.plus.log | gzip -c > "$1".plus.map.gz;
-bowtie --norc --best -y -p 7 -v 3 -k 1 /home/aarsta/data/genome/hg18/bowtie/bis.hg18.plus multiple.plus.fastq | gzip -c > "$1"_multiple.plus.map.gz;
-gzip unaligned.plus.fastq;
-gzip multiple.plus.fastq;
+#Map against forward strand, and filter out reads with too many MMs
+echo "* Bowtie mapping against forward strand";
+gunzip -c "$PROJECT".conv.fastq.gz | bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus - 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
 
-#map against minus bisulfite genome (no fw)
-gunzip -c "$1".conv.fastq.gz | bowtie --nofw --best -y -p 7 -v 3 --un unaligned.minus.fastq -m 1 --max multiple.minus.fastq --strata /home/aarsta/data/genome/hg18/bowtie/bis.hg18.minus - 2> mapping.minus.log | gzip -c > "$1".minus.map.gz;
-bowtie --nofw --best -y -p 7 -v 3 -k 1 /home/aarsta/data/genome/hg18/bowtie/bis.hg18.minus multiple.minus.fastq | gzip -c > "$1"_multiple.minus.map.gz;
-gzip unaligned.minus.fastq;
-gzip multiple.minus.fastq;
+gunzip -c "$PROJECT".plus.map.gz | awk '{ \
+num=split($8, tmp, ":"); \
+if (num<'"$(($MAX_MM+$MIN_MM_DIFF))"') {print $1 "," $3 "," ($4+1) "," $2 "," num}}' | sed 's/plusU_//'> "$PROJECT".both.map.csv
 
-#convert maps into csv and import into db
-gunzip -c "$1".plus.map.gz | awk '{print $1 "," $3 "," $4 "," $2}' > "$1".plus.map.csv
-echo -e ".separator \",\"\n.import ""$1"".plus.map.csv mappingFW" | sqlite3 "$1".db
-gzip "$1".plus.map.csv
+#Same for reverse strand
+echo "* Bowtie mapping against reverse strand";
+gunzip -c "$PROJECT".conv.fastq.gz | bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus - 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
 
-gunzip -c "$1".minus.map.gz | awk '{print $1 "," $3 "," $4 "," $2}' > "$1".minus.map.csv
-echo -e ".separator \",\"\n.import ""$1"".minus.map.csv mappingRV" | sqlite3 "$1".db
-gzip "$1".minus.map.csv
+gunzip -c "$PROJECT".minus.map.gz | awk '{ \
+num=split($8, tmp, ":"); \
+if (num<'"$(($MAX_MM+$MIN_MM_DIFF))"') {print $1 "," $3 "," ($4+50) "," $2 "," num}}' | sed 's/minusU_//'>> "$PROJECT".both.map.csv
 
-gunzip -c "$1"_multiple.plus.map.gz | awk '{print $1 "," $3 "," $4 "," $2}' > "$1"_multiple.plus.map.csv
-echo -e ".separator \",\"\n.import ""$1""_multiple.plus.map.csv mappingFWMulti" | sqlite3 "$1".db
-gzip "$1"_multiple.plus.map.csv
-
-gunzip -c "$1"_multiple.minus.map.gz | awk '{print $1 "," $3 "," $4 "," $2}' > "$1"_multiple.minus.map.csv
-echo -e ".separator \",\"\n.import ""$1""_multiple.minus.map.csv mappingRVMulti" | sqlite3 "$1".db
-gzip "$1"_multiple.minus.map.csv
-
-#Suck out unique FW strand mappings
-sqlite3 -csv "$1".db "SELECT * \
-FROM mappingFW \
-WHERE id NOT IN(SELECT id FROM mappingRV) \
-AND id NOT IN(SELECT id FROM mappingFWMulti) \
-AND id NOT IN(SELECT id FROM mappingRVMulti);" | sed 's/plusU_//' > "$1".map.csv
-
-#Suck out unique RV strand mappings
-sqlite3 -csv "$1".db "SELECT * \
-FROM mappingRV \
-WHERE id NOT IN(SELECT id FROM mappingFW) \
-AND id NOT IN(SELECT id FROM mappingFWMulti) \
-AND id NOT IN(SELECT id FROM mappingRVMulti);" | sed 's/minusU_//' >> "$1".map.csv
+#Combine forward and reverse strand mappings, filter out duplicates
+echo "* Combining and filtering forward and reverse mappings";
+sort -t "," -k 1,1 -k 5,5n "$PROJECT".both.map.csv  | awk 'BEGIN {FS = ","} {
+	line1 = $0;
+	split(line1, line1s, ",");
+	while ((getline line2) > 0) {
+		split(line1, line1s, ",");
+		split(line2, line2s, ",");
+		if (line2s[1]==line1s[1]) {
+			if ((line2s[5]-line1s[5])>='"$MIN_MM_DIFF"') {
+				if (line1s[5]<='$MAX_MM') print line1;
+			}
+			while(line2s[1]==line1s[1]) {
+				getline line1;
+				split(line1, line1s, ",");
+			}
+		} else {
+			if (line1s[5]<='$MAX_MM') print line1;
+			line1 = line2;
+		}
+	}
+	print line1;
+}' | cut -d "," --complement -f5  > "$PROJECT".map.csv
 
 #import into the db
-echo -e ".separator \",\"\n.import ""$1"".map.csv mapping" | sqlite3 "$1".db
-gzip "$1".map.csv
+echo -e ".separator \",\"\n.import ""$PROJECT"".both.map.csv mappingBoth" | sqlite3 "$PROJECT".db
+gzip -f "$PROJECT".both.map.csv
 
-#create mappingC table (minus strand C residues are shifted 1bp left
-sqlite3 -csv "$1".db "SELECT mapping.id, mapping.chr, mapping.position, mapping.strand, readsC.position \
+echo -e ".separator \",\"\n.import ""$PROJECT"".map.csv mapping" | sqlite3 "$PROJECT".db
+gzip -f "$PROJECT".map.csv
+
+#create mappingC table
+echo "* Creating mappingC table";
+sqlite3 -csv "$PROJECT".db "SELECT mapping.id, mapping.chr, mapping.position, mapping.strand, readsC.position \
 FROM readsC JOIN mapping ON readsC.id=mapping.id" | awk 'BEGIN {FS = ","}; {\
 	printf "%s,%s,",$1,$2;
-	if ($4=="+") {printf "%s,",($3+$5);} else {printf "%s,",($3+'"$1"'-$5);}
+	if ($4=="+") {printf "%s,",($3+$5-1);} else {printf "%s,",($3-$5);}
 	print $4
-	}' > "$1".mapC.csv
-echo -e ".separator \",\"\n.import ""$1"".mapC.csv mappingC" | sqlite3 "$1".db
-gzip "$1".mapC.csv
+	}' > "$PROJECT".mapC.csv
+echo -e ".separator \",\"\n.import ""$PROJECT"".mapC.csv mappingC" | sqlite3 "$PROJECT".db
+gzip -f "$PROJECT".mapC.csv
+
+#Create GenomeData R instances of the mapped reads and their Cs
+echo "* Converting to GD Rdata";
+R --vanilla --slave --quiet --args "$PROJECT".map.csv.gz "$PROJECT".Rdata < $PIPELINE_PATH/scripts/csvmap2GD.R &> /dev/null;
+R --vanilla --slave --quiet --args "$PROJECT".mapC.csv.gz "$PROJECT".C.Rdata < $PIPELINE_PATH/scripts/csvmap2GD.R &> /dev/null;
+
+#create mapping.log
+echo "* Creating mapping.log";
+NUM_READS=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads;"`;
+NUM_UNIQUE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM mapping;"`;
+NUM_UNMAPPABLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
+WHERE id NOT IN(SELECT id FROM mappingBoth);"`;
+NUM_MULTIPLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
+WHERE id IN(SELECT id FROM mappingBoth) \
+AND id NOT IN (SELECT id FROM mapping);"`;
+
+echo "# reads processed: $NUM_READS" > mapping.log;
+echo "# reads with at least one reported alignment: $NUM_UNIQUE" >> mapping.log;
+echo "# reads that failed to align: $NUM_UNMAPPABLE" >> mapping.log;
+echo "# reads with alignments suppressed due to -m: $NUM_MULTIPLE" >> mapping.log;
+echo "Reported $NUM_UNIQUE alignments to 1 output stream(s)" >> mapping.log;
 
 

@@ -1,3 +1,8 @@
 ChIP-seq-pipeline verson 0.1
-Released under the GPL v3
+Released under the GPLv3
 Written by Aaron Statham (aaron.l.statham@gmail.com)
+Requires:
+* sqlite3
+* R 2.10 with the BSgenome, chipseq & Repitools packages
+* wigToBigWig utility from UCSC
+
