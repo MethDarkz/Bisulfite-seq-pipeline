@@ -3,12 +3,6 @@ CREATE TABLE reads (
 	sequence char(50) NOT NULL
 );
 
-CREATE TABLE readsC (
-	id  char(40) NOT NULL,
-	position integer NOT NULL CHECK (position >= 0),
-	FOREIGN KEY (id) REFERENCES reads(id)
-);
-
 CREATE TABLE mappingBoth (
 	id char(40) NOT NULL,
 	chr char(5) NOT NULL,
@@ -23,14 +17,6 @@ CREATE TABLE mapping (
 	chr char(5) NOT NULL,
 	position integer NOT NULL CHECK (position >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
-	FOREIGN KEY (id) REFERENCES reads(id)
-);
-
-CREATE TABLE mappingC (
-	id char(40) NOT NULL,
-	chr char(5) NOT NULL,
-	position integer NOT NULL CHECK (position >= 0),
-	strand char(1) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 
