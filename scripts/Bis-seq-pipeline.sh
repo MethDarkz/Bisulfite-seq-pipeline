@@ -7,10 +7,11 @@ fi
 
 source "$1";
 
-if [ ! -e "$FASTQ" ]; then
+if [! -e "$FASTQ"]; then
   echo "$FASTQ"" does not exist!";
   exit 1;
 fi
+
 
 #init the database
 echo "* Initialising the database";
@@ -38,11 +39,11 @@ gzip -f "$PROJECT".C.csv
 
 #Convert C residues in reads to T
 echo "* Bisulfite converting reads";
-gunzip -c "$FASTQ" | sed -e 's/ .*//' -e '2~4s/C/T/g' | gzip -c > "$PROJECT".conv.fastq.gz;
+gunzip -c "$FASTQ" | sed -e 's/ .*//' -e '2~4s/C/T/g' > "$PROJECT".conv.fastq;
 
 #Map against forward strand, and filter out reads with too many MMs
 echo "* Bowtie mapping against forward strand";
-gunzip -c "$PROJECT".conv.fastq.gz | bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus - 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
+bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus "$PROJECT".conv.fastq 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
 
 gunzip -c "$PROJECT".plus.map.gz | awk '{ \
 num=split($8, tmp, ":"); \
@@ -50,7 +51,8 @@ if (num<'"$(($MAX_MM+$MIN_MM_DIFF))"') {print $1 "," $3 "," ($4+1) "," $2 "," nu
 
 #Same for reverse strand
 echo "* Bowtie mapping against reverse strand";
-gunzip -c "$PROJECT".conv.fastq.gz | bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus - 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
+bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus "$PROJECT".conv.fastq 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
+gzip "$PROJECT".conv.fastq;
 
 gunzip -c "$PROJECT".minus.map.gz | awk '{ \
 num=split($8, tmp, ":"); \

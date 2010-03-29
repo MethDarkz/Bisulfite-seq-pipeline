@@ -1,0 +1,55 @@
+CREATE TABLE reads (
+	id char(40) NOT NULL PRIMARY KEY,
+	sequenceFW char(75) NOT NULL,
+	sequenceRV char(75) NOT NULL
+);
+
+CREATE TABLE readsC (
+	id char(40) NOT NULL,
+	pair NOT NULL,
+	position integer NOT NULL CHECK (position >= 0),
+	FOREIGN KEY (id) REFERENCES reads(id)
+);
+
+CREATE INDEX readsC_ind ON readsC (id);
+
+CREATE TABLE mappingBoth (
+	id char(40) NOT NULL,
+	chr char(5) NOT NULL,
+	positionFW integer NOT NULL CHECK (positionFW >= 0),
+	positionRV integer NOT NULL CHECK (positionFW >= 0),
+	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
+	MMs integer NOT NULL CHECK (MMS >= 0),
+	referenceFW char(75) NOT NULL,
+	referenceRV char(75) NOT NULL,
+	FOREIGN KEY (id) REFERENCES reads(id)
+);
+
+CREATE TABLE mappingAdjust (
+	id char(40) NOT NULL,
+	chr char(5) NOT NULL,
+	positionFW integer NOT NULL CHECK (positionFW >= 0),
+	positionRV integer NOT NULL CHECK (positionFW >= 0),
+	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
+	MMs integer NOT NULL CHECK (MMS >= 0),
+	FOREIGN KEY (id) REFERENCES reads(id)
+);
+
+CREATE TABLE mapping (
+	id char(40) NOT NULL Unique,
+	chr char(5) NOT NULL,
+	positionFW integer NOT NULL CHECK (positionFW >= 0),
+	positionRV integer NOT NULL CHECK (positionFW >= 0),
+	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
+	FOREIGN KEY (id) REFERENCES reads(id)
+);
+
+CREATE TABLE mappingC (
+	id char(40) NOT NULL,
+	chr char(5) NOT NULL,
+	position integer NOT NULL CHECK (position >= 0),
+	strand char(1) NOT NULL,
+	FOREIGN KEY (id) REFERENCES reads(id)
+);
+
+

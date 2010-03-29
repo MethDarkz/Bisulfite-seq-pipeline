@@ -26,11 +26,11 @@ gzip -f "$PROJECT".fastq.csv
 
 #Map against the genome and filter out reads with too many MMs
 echo "* Bowtie mapping";
-gunzip -c "$PROJECT".conv.fastq.gz | bowtie "$BOWTIE_PARAMS" "$BOWTIE_INDEX" - 2> mapping.log | gzip -c > "$PROJECT".map.gz;
+gunzip -c "$PROJECT".fastq.gz | bowtie "$BOWTIE_PARAMS" "$BOWTIE_INDEX" - 2> mapping.log | gzip -c > "$PROJECT".map.gz;
 
 gunzip -c "$PROJECT".map.gz | awk '{ \
 num=split($8, tmp, ":"); \
-if (num<'"$(($MAX_MM+$MIN_MM_DIFF))"') {print $1 "," $3 "," ($4+1) "," $2 "," num}}' | sed 's/plusU_//'> "$PROJECT".both.map.csv
+if (num<'"$(($MAX_MM+$MIN_MM_DIFF))"') {print $1 "," $3 "," ($4+1) "," $2 "," num}}' > "$PROJECT".both.map.csv
 
 #Filter out duplicates
 echo "* Filtering mappings";
