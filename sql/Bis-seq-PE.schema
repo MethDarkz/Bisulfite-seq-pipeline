@@ -32,6 +32,8 @@ CREATE TABLE mappingAdjust (
 	positionRV integer NOT NULL CHECK (positionFW >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
+	referenceFW char(75) NOT NULL,
+	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 
@@ -41,6 +43,9 @@ CREATE TABLE mapping (
 	positionFW integer NOT NULL CHECK (positionFW >= 0),
 	positionRV integer NOT NULL CHECK (positionFW >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
+	MMs integer NOT NULL CHECK (MMS >= 0),
+	referenceFW char(75) NOT NULL,
+	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 

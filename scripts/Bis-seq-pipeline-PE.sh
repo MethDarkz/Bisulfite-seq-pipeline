@@ -73,8 +73,10 @@ echo "* Bowtie mapping against forward strand";
 bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
 
 gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
-  numFW=split($8, tmpFW, ":")
-  numRV=split($16, tmpRV, ":")
+  numFW=split($8, tmpFW, ":")-1
+  if (numFW==-1) numFW=0
+  numRV=split($16, tmpRV, ":")-1
+  if (numRV==-1) numRV=0
   if ((numFW+numRV)<maxmm) {
     print substr($1,1,length($1)-2) "," $3 "," ($4+1) "," ($12+1) ",+," (numFW+numRV)
   }
@@ -85,8 +87,10 @@ echo "* Bowtie mapping against reverse strand";
 bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
 
 gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
-  numFW=split($8, tmpFW, ":")
-  numRV=split($16, tmpRV, ":")
+  numFW=split($8, tmpFW, ":")-1
+  if (numFW==-1) numFW=0
+  numRV=split($16, tmpRV, ":")-1
+  if (numRV==-1) numRV=0
   if ((numFW+numRV)<maxmm) {
     print substr($1,1,length($1)-2) "," $3 "," ($4+1) "," ($12+1) ",-," (numFW+numRV)
   }
@@ -103,18 +107,20 @@ echo -e ".separator \",\"\n.import ""$PROJECT"".both.reference.csv mappingBoth" 
 sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, readsC.pair, readsC.position
   FROM mappingBoth LEFT OUTER JOIN readsC On mappingBoth.id=readsC.id;" | sort -t "," -k 1,1 -k 2,2 -k 3,3n -k6,6n | awk 'BEGIN {FS=","} {
 	s=($1","$2","$3","$4","$5",")
+	s2=(","$7","$8)
     if (s != prevs) {
-        if ( FNR > 1 ) print (prevs newMM)
+        if ( FNR > 1 ) print (prevs newMM prevs2)
         newMM = $6
 	}
 	if ($9=="1") { #check that the reference base actually *was* a C on forward read
-		if (substr($7, $10, 1)!="C") newMM = newMM+1
+		if (substr($7, $10, 1)=="T") newMM = newMM+1
 	} else if ($9=="2") { #check that the reference base actually *was* a G on reverse read
-		if (substr($8, $10, 1)!="G") newMM = newMM+1	
+		if (substr($8, $10, 1)=="A") newMM = newMM+1	
 	}
 	prevs = s
+	prevs2 = s2
 } END {
-	print (prevs newMM)
+	print (prevs newMM prevs2)
 }' > "$PROJECT".both.adjust.csv;
 
 #Combine forward and reverse strand mappings, filter out duplicates
@@ -134,7 +140,7 @@ sort -t "," -k 1,1 -k 6,6n "$PROJECT".both.adjust.csv  | awk -v maxmm=$MAX_MM -v
 }
 END {
 	if ( prevval<=maxmm && valdiff>=mindiff) print prevline
-}' | cut -d "," --complement -f6  > "$PROJECT".map.csv
+}' > "$PROJECT".map.csv
 
 #import into the db
 echo -e ".separator \",\"\n.import ""$PROJECT"".both.adjust.csv mappingAdjust" | sqlite3 "$PROJECT".db
@@ -142,6 +148,31 @@ echo -e ".separator \",\"\n.import ""$PROJECT"".both.adjust.csv mappingAdjust" |
 
 echo -e ".separator \",\"\n.import ""$PROJECT"".map.csv mapping" | sqlite3 "$PROJECT".db
 gzip -f "$PROJECT".map.csv
+
+#convert mappings into position residue counts, keep strands separate
+sqlite3 -csv "$PROJECT".db "SELECT
+mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV 
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk 'BEGIN {FS = ","} 
+	function revComp(temp) {
+		for(i=length(temp);i>=1;i--) {
+			tempChar = substr(temp,i,1)
+			if (tempChar=="A") {printf("T")} else
+			if (tempChar=="C") {printf("G")} else
+			if (tempChar=="G") {printf("C")} else
+			if (tempChar=="T") {printf("A")} else
+			{printf("N")}
+		}
+		printf("\n")
+	} {
+	
+	print $1 "," $2 "," $3 "," $4
+	printf("%s,%s,%s,",$1,$2,$5)
+	revComp($6)
+}' | sort -t "," -k 1,1 -k 3,3n | gzip -c > "$PROJECT".mappings.plus.csv.gz;
+
+R --vanilla --slave --quiet --args "$PROJECT".mappings.plus.csv.gz "$PROJECT".residues.plus.gz $READ_LENGTH $CHUNK_SIZE < "$PIPELINE_PATH"/scripts/residueCounts.R;
+
+exit 0;
 
 #create mappingC table
 echo "* Creating mappingC table";
