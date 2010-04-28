@@ -100,9 +100,11 @@ gzip "$PROJECT".conv.fastq1;
 gzip "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
-echo "Getting the reference sequence of reads mapping positions\n"
+echo "* Getting the reference sequence of reads mapping positions"
 R --vanilla --slave --quiet --args "$PROJECT".both.map.csv "$PROJECT".both.reference.csv $READ_LENGTH < "$PIPELINE_PATH"/scripts/getReferenceSequences.R;
 echo -e ".separator \",\"\n.import ""$PROJECT"".both.reference.csv mappingBoth" | sqlite3 "$PROJECT".db
+gzip "$PROJECT".both.map.csv;
+gzip "$PROJECT".both.reference.csv;
 
 sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, readsC.pair, readsC.position
   FROM mappingBoth LEFT OUTER JOIN readsC On mappingBoth.id=readsC.id;" | sort -t "," -k 1,1 -k 2,2 -k 3,3n -k6,6n | awk 'BEGIN {FS=","} {
@@ -144,12 +146,13 @@ END {
 
 #import into the db
 echo -e ".separator \",\"\n.import ""$PROJECT"".both.adjust.csv mappingAdjust" | sqlite3 "$PROJECT".db
-#gzip -f "$PROJECT".both.map.csv
+gzip -f "$PROJECT".both.adjust.csv
 
 echo -e ".separator \",\"\n.import ""$PROJECT"".map.csv mapping" | sqlite3 "$PROJECT".db
 gzip -f "$PROJECT".map.csv
 
 #convert mappings into position residue counts, keep strands separate
+echo "* Creating residue counts for forward strand";
 sqlite3 -csv "$PROJECT".db "SELECT
 mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV 
 FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk 'BEGIN {FS = ","} 
@@ -171,6 +174,30 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 }' | sort -t "," -k 1,1 -k 3,3n | gzip -c > "$PROJECT".mappings.plus.csv.gz;
 
 R --vanilla --slave --quiet --args "$PROJECT".mappings.plus.csv.gz "$PROJECT".residues.plus.gz $READ_LENGTH $CHUNK_SIZE < "$PIPELINE_PATH"/scripts/residueCounts.R;
+
+echo "* Creating residue counts for reverse strand";
+sqlite3 -csv "$PROJECT".db "SELECT
+mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV 
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk 'BEGIN {FS = ","} 
+	function revComp(temp) {
+		for(i=length(temp);i>=1;i--) {
+			tempChar = substr(temp,i,1)
+			if (tempChar=="A") {printf("T")} else
+			if (tempChar=="C") {printf("G")} else
+			if (tempChar=="G") {printf("C")} else
+			if (tempChar=="T") {printf("A")} else
+			{printf("N")}
+		}
+		printf("\n")
+	} {
+	
+	print $1 "," $2 "," $3 "," $4
+	printf("%s,%s,%s,",$1,$2,$5)
+	revComp($6)
+}' | sort -t "," -k 1,1 -k 3,3n | gzip -c > "$PROJECT".mappings.minus.csv.gz;
+
+R --vanilla --slave --quiet --args "$PROJECT".mappings.minus.csv.gz "$PROJECT".residues.minus.gz $READ_LENGTH $CHUNK_SIZE < "$PIPELINE_PATH"/scripts/residueCounts.R;
+
 
 exit 0;
 

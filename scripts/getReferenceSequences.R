@@ -1,12 +1,22 @@
 infile <- commandArgs(TRUE)[1]
 outfile <- commandArgs(TRUE)[2]
 width <- as.integer(commandArgs(TRUE)[3])
+chunkSize <- 500000
 
 require(BSgenome.Hsapiens.UCSC.hg18)
-temp <- read.csv(infile, header=FALSE, quote="", colClasses=c("character","character","integer","integer","character","integer"))
-colnames(temp) <- c("id","chr","fw","rv","strand")
+f1 <- file(infile, open="rt")
+fOut <- file(outfile, open="wt")
+repeat {
+	temp <- as.data.frame(do.call(rbind, strsplit(readLines(f1, n=chunkSize), split=",")), stringsAsFactors=FALSE)
+	if (nrow(temp)==0) break
+	colnames(temp) <- c("id","chr","fw","rv","strand", "MM")
+	temp$fw <- as.integer(temp$fw)
+	temp$rv <- as.integer(temp$rv)
+	temp$fwSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$fw, temp$rv), width=width, strand=temp$strand)
+	temp$rvSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$rv, temp$fw), width=width, strand=ifelse(temp$strand=="+", "-", "+"))
+	
+	writeLines(apply(temp, 1, paste, collapse=","), fOut)
+}
 
-temp$fwSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$fw, temp$rv), width=width, strand=temp$strand)
-temp$rvSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$rv, temp$fw), width=width, strand=ifelse(temp$strand=="+", "-", "+"))
-
-write.table(temp, outfile, quote=FALSE, col.names=FALSE, row.names=FALSE, sep=",")
+close(f1)
+close(fOut)

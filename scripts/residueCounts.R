@@ -36,6 +36,6 @@ for (chunk in names(temp.split)[order(gsub("-.*","",names(temp.split)), as.integ
 	writeLines(apply(tempMatrix[tempOut,], 1, paste, collapse=","), out)
 	cat(".")
 }
-
+cat("\n")
 close(out)
 
