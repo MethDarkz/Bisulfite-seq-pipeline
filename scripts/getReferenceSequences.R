@@ -15,7 +15,7 @@ repeat {
 	temp$fwSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$fw, temp$rv), width=width, strand=temp$strand)
 	temp$rvSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$rv, temp$fw), width=width, strand=ifelse(temp$strand=="+", "-", "+"))
 	
-	writeLines(apply(temp, 1, paste, collapse=","), fOut)
+	writeLines(gsub(" ","",apply(temp, 1, paste, collapse=",")), fOut)
 }
 
 close(f1)
