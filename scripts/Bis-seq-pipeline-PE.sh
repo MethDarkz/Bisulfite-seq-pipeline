@@ -129,8 +129,6 @@ function revComp(temp) {
         printf(",%s\n",RV)
     }
 }' > "$PROJECT".both.reference.csv
-
-R --vanilla --slave --quiet --args "$PROJECT".both.map.csv "$PROJECT".both.reference.csv $READ_LENGTH < "$PIPELINE_PATH"/scripts/getReferenceSequences.R;
 echo -e ".separator \",\"\n.import ""$PROJECT"".both.reference.csv mappingBoth" | sqlite3 "$PROJECT".db
 gzip "$PROJECT".both.map.csv;
 gzip "$PROJECT".both.reference.csv;
