@@ -11,7 +11,7 @@ temp.split <- split(temp[,1:3], temp$chunk)
 
 out <- gzfile(outfile, open="wt")
 thisChr <- "" 
-
+options(scipen=1000)
 for (chunk in names(temp.split)[order(gsub("-.*","",names(temp.split)), as.integer(gsub(".*-","",names(temp.split))))]) {
 	this <- temp.split[[chunk]]
 	#have we gone to a new chromosome?

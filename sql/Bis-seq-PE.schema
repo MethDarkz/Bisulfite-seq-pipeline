@@ -1,7 +1,9 @@
 CREATE TABLE reads (
 	id char(40) NOT NULL PRIMARY KEY,
 	sequenceFW char(75) NOT NULL,
-	sequenceRV char(75) NOT NULL
+	sequenceRV char(75) NOT NULL,
+	qualityFW char(75) NOT NULL,
+	qualityRV char(75) NOT NULL
 );
 
 CREATE TABLE readsC (

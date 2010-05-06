@@ -24,14 +24,15 @@ sqlite3 "$PROJECT".db < $PIPELINE_PATH/sql/Bis-seq-PE.schema;
 
 #Convert fastq into csv
 echo "* Importing reads into the database";
-gunzip -c "$FASTQ1"  | awk 'NR%4==1 || NR%4==2' | sed -e 's/ .*//' | sed -e 'N' -e 's/\//,/' -e 's/\n/,/' -e 's/^@//' >"$PROJECT".fastq1.csv;
-gunzip -c "$FASTQ2"  | awk 'NR%4==1 || NR%4==2' | sed -e 's/ .*//' | sed -e 'N' -e 's/\//,/' -e 's/\n/,/' -e 's/^@//' >"$PROJECT".fastq2.csv;
+gunzip -c "$FASTQ1"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq1.csv;
+gunzip -c "$FASTQ2"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq2.csv;
 #Import FW & RV seqs in db, one row per read id
 awk -v file2="$PROJECT".fastq2.csv 'BEGIN {FS=","} {
   tmp1=$1
   tmp2=$3
+  tmp3=$4
   getline < file2
-  print tmp1","tmp2","$3}' "$PROJECT".fastq1.csv > "$PROJECT".reads.csv
+  print tmp1","tmp2","$3","tmp3","$4}' "$PROJECT".fastq1.csv > "$PROJECT".reads.csv
 echo -e ".separator \",\"\n.import $PROJECT.reads.csv reads" | sqlite3 "$PROJECT".db;
 gzip "$PROJECT".reads.csv;
 
@@ -92,7 +93,7 @@ gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($
   numRV=split($16, tmpRV, ":")-1
   if (numRV==-1) numRV=0
   if ((numFW+numRV)<maxmm) {
-    print substr($1,1,length($1)-2) "," $3 "," ($4+1) "," ($12+1) ",-," (numFW+numRV)
+    print substr($1,1,length($1)-2) "," $3 "," ($12+1) "," ($4+1) ",-," (numFW+numRV)
   }
 }' | sed 's/minusU_//'>> "$PROJECT".both.map.csv
 

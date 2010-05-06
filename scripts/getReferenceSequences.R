@@ -12,8 +12,8 @@ repeat {
 	colnames(temp) <- c("id","chr","fw","rv","strand", "MM")
 	temp$fw <- as.integer(temp$fw)
 	temp$rv <- as.integer(temp$rv)
-	temp$fwSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$fw, temp$rv), width=width, strand=temp$strand)
-	temp$rvSeq=getSeq(Hsapiens, temp$chr, ifelse(temp$strand=="+", temp$rv, temp$fw), width=width, strand=ifelse(temp$strand=="+", "-", "+"))
+	temp$fwSeq=getSeq(Hsapiens, temp$chr, temp$fw, width=width, strand=temp$strand)
+	temp$rvSeq=getSeq(Hsapiens, temp$chr, temp$rv, width=width, strand=ifelse(temp$strand=="+", "-", "+"))
 	
 	writeLines(gsub(" ","",apply(temp, 1, paste, collapse=",")), fOut)
 }
