@@ -102,6 +102,34 @@ gzip "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo "* Getting the reference sequence of reads mapping positions"
+sort --field-separator="," -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_FASTA" 'BEGIN {FS=","}
+function revComp(temp) {
+    for(i=length(temp);i>=1;i--) {
+        tempChar = substr(temp,i,1)
+        if (tempChar=="A") {printf("T")} else
+        if (tempChar=="C") {printf("G")} else
+        if (tempChar=="G") {printf("C")} else
+        if (tempChar=="T") {printf("A")} else
+        {printf("N")}
+    }
+} { #entry point
+    if ($2!=chr) { #if hit a new chromosome, read it into chrSeq
+        chr=$2
+        "awk -f "pipeline"/readChr.awk "genomePath chr".fa" | getline chrSeq
+    }
+    FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
+    RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
+    printf("%s,%s,%s,%s,%s,%s,",$1,$2,$3,$4,$5,$6)
+    if ($5=="+") {
+        printf("%s,",FW)
+        revComp(RV)
+        printf("\n")
+    } else {
+        revComp(FW)
+        printf(",%s\n",RV)
+    }
+}' > "$PROJECT".both.reference.csv
+
 R --vanilla --slave --quiet --args "$PROJECT".both.map.csv "$PROJECT".both.reference.csv $READ_LENGTH < "$PIPELINE_PATH"/scripts/getReferenceSequences.R;
 echo -e ".separator \",\"\n.import ""$PROJECT"".both.reference.csv mappingBoth" | sqlite3 "$PROJECT".db
 gzip "$PROJECT".both.map.csv;
