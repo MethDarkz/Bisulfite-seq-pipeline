@@ -115,7 +115,7 @@ function revComp(temp) {
 } { #entry point
     if ($2!=chr) { #if hit a new chromosome, read it into chrSeq
         chr=$2
-        "awk -f "pipeline"/readChr.awk "genomePath chr".fa" | getline chrSeq
+        "awk -f "pipeline"/scripts/readChr.awk "genomePath chr".fa" | getline chrSeq
     }
     FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
     RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
