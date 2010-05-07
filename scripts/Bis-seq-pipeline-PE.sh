@@ -102,7 +102,7 @@ gzip "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo "* Getting the reference sequence of reads mapping positions"
-sort --field-separator="," -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_FASTA" 'BEGIN {FS=","}
+sort --field-separator="," -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS=","}
 function revComp(temp) {
     for(i=length(temp);i>=1;i--) {
         tempChar = substr(temp,i,1)
@@ -115,7 +115,7 @@ function revComp(temp) {
 } { #entry point
     if ($2!=chr) { #if hit a new chromosome, read it into chrSeq
         chr=$2
-        "awk -f "pipeline"/scripts/readChr.awk "genomePath chr".fa" | getline chrSeq
+        "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
     }
     FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
     RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
@@ -178,11 +178,12 @@ gzip -f "$PROJECT".both.adjust.csv
 echo -e ".separator \",\"\n.import ""$PROJECT"".map.csv mapping" | sqlite3 "$PROJECT".db
 gzip -f "$PROJECT".map.csv
 
-#convert mappings into position residue counts, keep strands separate
-echo "* Creating residue counts for forward strand";
+#export db into SAM files, keep strands separate
+cp "$GENOME_PATH"/hg18.samdir "$PROJECT".mappings.plus.sam;
 sqlite3 -csv "$PROJECT".db "SELECT
-mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV 
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk 'BEGIN {FS = ","} 
+mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
+	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
 	function revComp(temp) {
 		for(i=length(temp);i>=1;i--) {
 			tempChar = substr(temp,i,1)
@@ -192,20 +193,27 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 			if (tempChar=="T") {printf("A")} else
 			{printf("N")}
 		}
+		printf("\t")
+	}
+	function rev(temp) {
+		for(i=length(temp);i>=1;i--) printf(substr(temp,i,1))
 		printf("\n")
 	} {
-	
-	print $1 "," $2 "," $3 "," $4
-	printf("%s,%s,%s,",$1,$2,$5)
-	revComp($6)
-}' | sort -t "," -k 1,1 -k 3,3n | gzip -c > "$PROJECT".mappings.plus.csv.gz;
+	print $1 "\t99\t" $2 "\t" $4 "\t255\t"readLength"M\t=\t" $6 "\t" (abs($6-$4)+readLength) "\t" $5 "\t" $8
+	printf("%s\t147\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,$2,$6,$4,(abs($6-$4)+readLength))
+	revComp($7)
+	rev($9)
+}' >> "$PROJECT".mappings.plus.sam;
+samtools import "$GENOME_PATH"/hg18.reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
+samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sort;
+samtools index "$PROJECT".mappings.plus.sort.bam;
+rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
-R --vanilla --slave --quiet --args "$PROJECT".mappings.plus.csv.gz "$PROJECT".residues.plus.gz $READ_LENGTH $CHUNK_SIZE < "$PIPELINE_PATH"/scripts/residueCounts.R;
-
-echo "* Creating residue counts for reverse strand";
+cp "$GENOME_PATH"/hg18.samdir "$PROJECT".mappings.minus.sam;
 sqlite3 -csv "$PROJECT".db "SELECT
-mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV 
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk 'BEGIN {FS = ","} 
+mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
+	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
 	function revComp(temp) {
 		for(i=length(temp);i>=1;i--) {
 			tempChar = substr(temp,i,1)
@@ -215,47 +223,18 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" |
 			if (tempChar=="T") {printf("A")} else
 			{printf("N")}
 		}
+		printf("\t")
+	}
+	function rev(temp) {
+		for(i=length(temp);i>=1;i--) printf(substr(temp,i,1))
 		printf("\n")
 	} {
-	
-	print $1 "," $2 "," $3 "," $4
-	printf("%s,%s,%s,",$1,$2,$5)
-	revComp($6)
-}' | sort -t "," -k 1,1 -k 3,3n | gzip -c > "$PROJECT".mappings.minus.csv.gz;
-
-R --vanilla --slave --quiet --args "$PROJECT".mappings.minus.csv.gz "$PROJECT".residues.minus.gz $READ_LENGTH $CHUNK_SIZE < "$PIPELINE_PATH"/scripts/residueCounts.R;
-
-
-exit 0;
-
-#create mappingC table
-echo "* Creating mappingC table";
-sqlite3 -csv "$PROJECT".db "SELECT mapping.id, mapping.chr, mapping.position, mapping.strand, readsC.position \
-FROM readsC JOIN mapping ON readsC.id=mapping.id" | awk 'BEGIN {FS = ","}; {\
-	printf "%s,%s,",$1,$2;
-	if ($4=="+") {printf "%s,",($3+$5-1);} else {printf "%s,",($3-$5);}
-	print $4
-	}' > "$PROJECT".mapC.csv
-echo -e ".separator \",\"\n.import ""$PROJECT"".mapC.csv mappingC" | sqlite3 "$PROJECT".db
-gzip -f "$PROJECT".mapC.csv
-
-#Create GenomeData R instances of the mapped reads and their Cs
-echo "* Converting to GD Rdata";
-R --vanilla --slave --quiet --args "$PROJECT".map.csv.gz "$PROJECT".Rdata < $PIPELINE_PATH/scripts/csvmap2GD.R &> /dev/null;
-R --vanilla --slave --quiet --args "$PROJECT".mapC.csv.gz "$PROJECT".C.Rdata < $PIPELINE_PATH/scripts/csvmap2GD.R &> /dev/null;
-
-#create mapping.log
-echo "* Creating mapping.log";
-NUM_READS=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads;"`;
-NUM_UNIQUE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM mapping;"`;
-NUM_UNMAPPABLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
-WHERE id NOT IN(SELECT id FROM mappingBoth);"`;
-NUM_MULTIPLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
-WHERE id IN(SELECT id FROM mappingBoth) \
-AND id NOT IN (SELECT id FROM mapping);"`;
-
-echo "# reads processed: $NUM_READS" > mapping.log;
-echo "# reads with at least one reported alignment: $NUM_UNIQUE" >> mapping.log;
-echo "# reads that failed to align: $NUM_UNMAPPABLE" >> mapping.log;
-echo "# reads with alignments suppressed due to -m: $NUM_MULTIPLE" >> mapping.log;
-echo "Reported $NUM_UNIQUE alignments to 1 output stream(s)" >> mapping.log;
+	printf("%s\t83\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,$2,$4,$6,(abs($6-$4)+readLength))
+	revComp($5)
+	rev($8)
+	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
+}' >> "$PROJECT".mappings.minus.sam;
+samtools import "$GENOME_PATH"/hg18.reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
+samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sort;
+samtools index "$PROJECT".mappings.minus.sort.bam;
+rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
