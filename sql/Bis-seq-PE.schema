@@ -6,14 +6,6 @@ CREATE TABLE reads (
 	qualityRV char(75) NOT NULL
 );
 
-CREATE TABLE readsC (
-	id char(40) NOT NULL,
-	pair NOT NULL,
-	position integer NOT NULL CHECK (position >= 0),
-	FOREIGN KEY (id) REFERENCES reads(id)
-);
-
-
 CREATE TABLE mappingBoth (
 	id char(40) NOT NULL,
 	chr char(5) NOT NULL,
@@ -25,7 +17,6 @@ CREATE TABLE mappingBoth (
 	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
-
 CREATE INDEX mappingBoth_ind ON mappingBoth (id);
 
 CREATE TABLE mappingAdjust (
@@ -51,13 +42,3 @@ CREATE TABLE mapping (
 	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
-
-CREATE TABLE mappingC (
-	id char(40) NOT NULL,
-	chr char(5) NOT NULL,
-	position integer NOT NULL CHECK (position >= 0),
-	strand char(1) NOT NULL,
-	FOREIGN KEY (id) REFERENCES reads(id)
-);
-
-

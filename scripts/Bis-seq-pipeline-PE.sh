@@ -33,8 +33,8 @@ awk -v file2="$PROJECT".fastq2.csv 'BEGIN {FS=","} {
   tmp3=$4
   getline < file2
   print tmp1","tmp2","$3","tmp3","$4}' "$PROJECT".fastq1.csv | gzip -c > "$PROJECT".reads.csv.gz
-gzip "$PROJECT".fastq1.csv;
-gzip "$PROJECT".fastq2.csv;
+gzip -f "$PROJECT".fastq1.csv;
+gzip -f "$PROJECT".fastq2.csv;
 gunzip -c "$PROJECT".reads.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' | sqlite3 "$PROJECT".db '.import /dev/stdin reads'
 
 
@@ -71,8 +71,8 @@ gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($
   }
 }' | sed 's/minusU_//'>> "$PROJECT".both.map.csv
 
-gzip "$PROJECT".conv.fastq1;
-gzip "$PROJECT".conv.fastq2;
+gzip -f "$PROJECT".conv.fastq1;
+gzip -f "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo "* Getting the reference sequence of reads mapping positions"
@@ -104,7 +104,7 @@ function revComp(temp) {
     }
 }' | gzip -c > "$PROJECT".both.reference.csv.gz;
 gunzip -c "$PROJECT".both.reference.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
-gzip "$PROJECT".both.map.csv;
+gzip -f "$PROJECT".both.map.csv;
 
 sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
   FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS=","} {
