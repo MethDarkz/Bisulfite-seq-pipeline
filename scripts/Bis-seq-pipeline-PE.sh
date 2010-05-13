@@ -18,12 +18,12 @@ if [ ! -e "$FASTQ2" ]; then
 fi
 
 #init the database
-echo "* Initialising the database";
+echo `date`" - Initialising the database";
 rm -f "$PROJECT".db;
 sqlite3 "$PROJECT".db < "$PIPELINE_PATH"/sql/Bis-seq-PE.schema;
 
 #Convert fastq into csv
-echo "* Importing reads into the database";
+echo `date`" - Importing reads into the database";
 gunzip -c "$FASTQ1"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq1.csv;
 gunzip -c "$FASTQ2"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq2.csv;
 #Import FW & RV seqs in db, one row per read id
@@ -39,12 +39,12 @@ gunzip -c "$PROJECT".reads.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' | sqlit
 
 
 #Convert C residues in reads to T
-echo "* Bisulfite converting reads";
+echo `date`" - Bisulfite converting reads";
 gunzip -c "$FASTQ1" | sed -e 's/ .*//' -e '2~4s/C/T/g' > "$PROJECT".conv.fastq1;
 gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
 #Map against forward strand, and filter out reads with too many MMs
-echo "* Bowtie mapping against forward strand";
+echo `date`" - Bowtie mapping against forward strand";
 bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
 
 gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
@@ -58,7 +58,7 @@ gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($M
 }' | sed 's/plusU_//'> "$PROJECT".both.map.csv
 
 #Same for reverse strand
-echo "* Bowtie mapping against reverse strand";
+echo `date`" - Bowtie mapping against reverse strand";
 bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
 
 gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
@@ -75,7 +75,7 @@ gzip -f "$PROJECT".conv.fastq1;
 gzip -f "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
-echo "* Getting the reference sequence of reads mapping positions"
+echo `date`" - Getting the reference sequence of reads mapping positions"
 sort --field-separator="," -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS=","}
 function revComp(temp) {
     for(i=length(temp);i>=1;i--) {
@@ -126,7 +126,7 @@ sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequen
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
 
 #Combine forward and reverse strand mappings, filter out duplicates
-echo "* Combining and filtering forward and reverse mappings";
+echo `date`" - Combining and filtering forward and reverse mappings";
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "," -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = ","} {
     s = $1
     if (s != prevs) {
