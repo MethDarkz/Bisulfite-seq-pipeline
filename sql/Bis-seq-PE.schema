@@ -13,7 +13,6 @@ CREATE TABLE readsC (
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 
-CREATE INDEX readsC_ind ON readsC (id);
 
 CREATE TABLE mappingBoth (
 	id char(40) NOT NULL,
@@ -26,6 +25,8 @@ CREATE TABLE mappingBoth (
 	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
+
+CREATE INDEX mappingBoth_ind ON mappingBoth (id);
 
 CREATE TABLE mappingAdjust (
 	id char(40) NOT NULL,
