@@ -1,8 +1,10 @@
 ChIP-seq-pipeline verson 0.1
 Released under the GPLv3
-Written by Aaron Statham (aaron.l.statham@gmail.com)
+Written by Aaron Statham (a.statham at garvan dot org dot au)
+A PhD student in the Cancer Epigenetics lab at the Garvan Institute of Medical Research, Sydney, Australia
+
 Requires:
 * sqlite3
-* R 2.10 with the BSgenome, chipseq & Repitools packages
-* wigToBigWig utility from UCSC
+* R 2.10 with BSgenome package installed
 
+NOTE: At the moment, only the Paired End Bisulfite sequencing pipeline is in working order
