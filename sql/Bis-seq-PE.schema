@@ -42,3 +42,4 @@ CREATE TABLE mapping (
 	referenceRV char(75) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
+CREATE INDEX mapping_ind ON mapping (id);

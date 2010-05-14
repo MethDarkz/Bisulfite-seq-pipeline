@@ -106,6 +106,7 @@ function revComp(temp) {
 gunzip -c "$PROJECT".both.reference.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
 gzip -f "$PROJECT".both.map.csv;
 
+echo `date`" - Adjusting number of mismatches for C->T errors in mapping"
 sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
   FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS=","} {
 	mm=0;
@@ -148,6 +149,7 @@ END {
 gunzip -c "$PROJECT".map.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
 
 #export db into SAM files, keep strands separate
+echo `date`" - Exporting database to BAM files"
 cp "$GENOME_PATH"/hg18.samdir "$PROJECT".mappings.plus.sam;
 sqlite3 -csv "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
@@ -209,8 +211,45 @@ samtools index "$PROJECT".mappings.minus.sort.bam;
 rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
 
 #create bed & Rdata (GD) file for coverage mapping for each strand
+echo `date`" - Creating coverage bed and GenomeData files"
 sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='+';" | gzip -c > "$PROJECT".plus.bed.gz
 sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='-';" | gzip -c > "$PROJECT".minus.bed.gz
 
 R --vanilla --slave --args "$PROJECT".plus.bed.gz "$PROJECT".plus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R
 R --vanilla --slave --args "$PROJECT".minus.bed.gz "$PROJECT".minus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R
+
+#Are C's found in CpG sites?
+echo `date`" - Determining context of C residues"
+sqlite3 -csv "$PROJECT".db "SELECT mapping.chr, mapping.positionFW, mapping.positionRV, mapping.strand, reads.sequenceFW, reads.sequenceRV
+  FROM mapping JOIN reads ON mapping.id=reads.id;" | sort -t "," -k1,1 | awk 'BEGIN {FS = ","} {
+	num=split($5, tmp, "C"); 
+	upto=0
+	for (i = 2; i <= num; i++) {
+		upto = upto + 1 + length(tmp[i-1]);
+		if ($4=="+") print $1 "," ($2+upto-1)
+		else print $1 "," ($2+length($5)-(upto)-1)
+	}
+	num=split($6, tmp, "G"); 
+	upto=0
+	for (i = 2; i <= num; i++) {
+		upto = upto + 1 + length(tmp[i-1]);
+		if ($4=="+") print $1 "," ($3+length($5)-(upto))			
+		else print $1 "," ($3+upto-2)
+	}
+}' | awk -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS=","}
+function revComp(temp) {
+    for(i=length(temp);i>=1;i--) {
+        tempChar = substr(temp,i,1)
+        if (tempChar=="A") {printf("T")} else
+        if (tempChar=="C") {printf("G")} else
+        if (tempChar=="G") {printf("C")} else
+        if (tempChar=="T") {printf("A")} else
+        {printf("N")}
+    }
+} { #entry point
+    if ($1!=chr) { #if hit a new chromosome, read it into chrSeq
+        chr=$1
+        "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
+    }
+    print(toupper(substr(chrSeq,$2,2)))
+}' | sort | uniq -c > "$PROJECT".context
