@@ -253,3 +253,35 @@ function revComp(temp) {
     }
     print(toupper(substr(chrSeq,$2,2)))
 }' | sort | uniq -c > "$PROJECT".context
+
+#How many Cs in read vs reference?
+echo `date`" - Determining conversion %"
+sqlite3 -csv "$PROJECT".db "SELECT reads.sequenceFW, reads.sequenceRV, mapping.referenceFW, mapping.referenceRV
+  FROM mapping JOIN reads ON mapping.id=reads.id;" | awk 'BEGIN {
+	FS = ","
+	readC=0
+	refC=0
+} {
+	readC=readC+split($1,tmp,"C")-1
+	readC=readC+split($2,tmp,"G")-1
+	refC=refC+split($3,tmp,"C")-1
+	refC=refC+split($4,tmp,"G")-1
+} END {
+	print readC","refC
+}' > "$PROJECT".conversion;
+
+NUM_READS=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads;"`;
+NUM_UNIQUE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM mapping;"`;
+NUM_UNMAPPABLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
+WHERE id NOT IN(SELECT id FROM mappingBoth);"`;
+NUM_MULTIPLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
+WHERE id IN(SELECT id FROM mappingBoth) \
+AND id NOT IN (SELECT id FROM mapping);"`;
+
+#Creating mapping log
+echo `date`" - Creating mapping log"
+echo "# reads processed: $NUM_READS" > mapping.log;
+echo "# reads with at least one reported alignment: $NUM_UNIQUE" >> mapping.log;
+echo "# reads that failed to align: $NUM_UNMAPPABLE" >> mapping.log;
+echo "# reads with alignments suppressed due to -m: $NUM_MULTIPLE" >> mapping.log;
+echo "Reported $NUM_UNIQUE alignments to 1 output stream(s)" >> mapping.log;
