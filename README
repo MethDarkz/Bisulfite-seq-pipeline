@@ -6,5 +6,6 @@ A PhD student in the Cancer Epigenetics lab at the Garvan Institute of Medical R
 Requires:
 * sqlite3
 * R 2.10 with BSgenome package installed
+* samtools
 
 NOTE: At the moment, only the Paired End Bisulfite sequencing pipeline is in working order
