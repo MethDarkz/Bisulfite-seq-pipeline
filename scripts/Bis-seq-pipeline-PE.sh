@@ -45,7 +45,7 @@ gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
 #Map against forward strand, and filter out reads with too many MMs
 echo `date`" - Bowtie mapping against forward strand";
-bowtie --norc "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
+"$BOWTIE_PATH"/bowtie --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
 
 gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
@@ -59,7 +59,7 @@ gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($M
 
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
-bowtie --nofw "$BOWTIE_PARAMS" "$BOWTIE_BS_INDEX".minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
+"$BOWTIE_PATH"/bowtie --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
 
 gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
@@ -150,7 +150,7 @@ gunzip -c "$PROJECT".map.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite
 
 #export db into SAM files, keep strands separate
 echo `date`" - Exporting database to BAM files"
-cp "$GENOME_PATH"/hg18.samdir "$PROJECT".mappings.plus.sam;
+cp "$GENOME_PATH"/samdir "$PROJECT".mappings.plus.sam;
 sqlite3 -csv "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
 FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
@@ -175,12 +175,12 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 	revComp($7)
 	rev($9)
 }' >> "$PROJECT".mappings.plus.sam;
-samtools import "$GENOME_PATH"/hg18.reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
+samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
 samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sort;
 samtools index "$PROJECT".mappings.plus.sort.bam;
 rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
-cp "$GENOME_PATH"/hg18.samdir "$PROJECT".mappings.minus.sam;
+cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
 sqlite3 -csv "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
 FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
@@ -205,7 +205,7 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" |
 	rev($8)
 	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
 }' >> "$PROJECT".mappings.minus.sam;
-samtools import "$GENOME_PATH"/hg18.reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
+samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
 samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sort;
 samtools index "$PROJECT".mappings.minus.sort.bam;
 rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
