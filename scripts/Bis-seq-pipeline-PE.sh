@@ -32,10 +32,11 @@ awk -v file2="$PROJECT".fastq2.csv 'BEGIN {FS=","} {
   tmp2=$3
   tmp3=$4
   getline < file2
-  print tmp1","tmp2","$3","tmp3","$4}' "$PROJECT".fastq1.csv | gzip -c > "$PROJECT".reads.csv.gz
+  print tmp1","tmp2","$3","tmp3","$4
+}' "$PROJECT".fastq1.csv | gzip -c > "$PROJECT".reads.csv.gz;
 gzip -f "$PROJECT".fastq1.csv;
 gzip -f "$PROJECT".fastq2.csv;
-gunzip -c "$PROJECT".reads.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' | sqlite3 "$PROJECT".db '.import /dev/stdin reads'
+gunzip -c "$PROJECT".reads.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' | sqlite3 "$PROJECT".db '.import /dev/stdin reads';
 
 
 #Convert C residues in reads to T
@@ -175,9 +176,9 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 	revComp($7)
 	rev($9)
 }' >> "$PROJECT".mappings.plus.sam;
-samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
-samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sort;
-samtools index "$PROJECT".mappings.plus.sort.bam;
+"$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
+"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sort;
+"$SAMTOOLS_PATH"/samtools index "$PROJECT".mappings.plus.sort.bam;
 rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
@@ -205,18 +206,18 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" |
 	rev($8)
 	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
 }' >> "$PROJECT".mappings.minus.sam;
-samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
-samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sort;
-samtools index "$PROJECT".mappings.minus.sort.bam;
+"$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
+"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sort;
+"$SAMTOOLS_PATH"/samtools index "$PROJECT".mappings.minus.sort.bam;
 rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
 
 #create bed & Rdata (GD) file for coverage mapping for each strand
-echo `date`" - Creating coverage bed and GenomeData files"
-sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='+';" | gzip -c > "$PROJECT".plus.bed.gz
-sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='-';" | gzip -c > "$PROJECT".minus.bed.gz
+echo `date`" - Creating coverage bed and GenomeData files";
+sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='+';" | gzip -c > "$PROJECT".plus.bed.gz;
+sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='-';" | gzip -c > "$PROJECT".minus.bed.gz;
 
-R --vanilla --slave --args "$PROJECT".plus.bed.gz "$PROJECT".plus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R
-R --vanilla --slave --args "$PROJECT".minus.bed.gz "$PROJECT".minus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R
+"$R_PATH"/R --vanilla --slave --args "$PROJECT".plus.bed.gz "$PROJECT".plus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
+"$R_PATH"/R --vanilla --slave --args "$PROJECT".minus.bed.gz "$PROJECT".minus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
 
 #Are C's found in CpG sites?
 echo `date`" - Determining context of C residues"
@@ -252,7 +253,7 @@ function revComp(temp) {
         "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
     }
     print(toupper(substr(chrSeq,$2,2)))
-}' | sort | uniq -c > "$PROJECT".context
+}' | sort | uniq -c > "$PROJECT".context;
 
 #How many Cs in read vs reference?
 echo `date`" - Determining conversion %"
