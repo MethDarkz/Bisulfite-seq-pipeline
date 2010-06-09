@@ -59,9 +59,7 @@ gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
 #Map against forward strand, and filter out reads with too many MMs
 echo `date`" - Bowtie mapping against forward strand";
-"$BOWTIE_PATH"/bowtie --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log | gzip -c > "$PROJECT".plus.map.gz;
-
-gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+"$BOWTIE_PATH"/bowtie --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log |  sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
   if (numFW==-1) numFW=0
   numRV=split($16, tmpRV, ":")-1
@@ -69,13 +67,11 @@ gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($M
   if ((numFW+numRV)<maxmm) {
     print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|" ($12+1) "|+|" (numFW+numRV)
   }
-}' | sed 's/plusU_//'> "$PROJECT".both.map.csv
+}' | sed 's/plusU_//'> "$PROJECT".both.map;
 
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
-"$BOWTIE_PATH"/bowtie --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | gzip -c > "$PROJECT".minus.map.gz;
-
-gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+"$BOWTIE_PATH"/bowtie --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
   if (numFW==-1) numFW=0
   numRV=split($16, tmpRV, ":")-1
@@ -83,14 +79,14 @@ gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($
   if ((numFW+numRV)<maxmm) {
     print substr($1,1,length($1)-2) "|" $3 "|" ($12+1) "|" ($4+1) "|-|" (numFW+numRV)
   }
-}' | sed 's/minusU_//'>> "$PROJECT".both.map.csv
+}' | sed 's/minusU_//'>> "$PROJECT".both.map;
 
 gzip -f "$PROJECT".conv.fastq1;
 gzip -f "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo `date`" - Getting the reference sequence of reads mapping positions"
-sort -f"|" -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS="|"}
+sort -f"|" -k2,2 -k3,3n "$PROJECT".both.map | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS="|"}
 function revComp(temp) {
     for(i=length(temp);i>=1;i--) {
         tempChar = substr(temp,i,1)
@@ -116,9 +112,8 @@ function revComp(temp) {
         revComp(FW)
         printf(",%s\n",RV)
     }
-}' | gzip -c > "$PROJECT".both.reference.csv.gz;
-gunzip -c "$PROJECT".both.reference.csv.gz | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
-gzip -f "$PROJECT".both.map.csv;
+}' | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
+gzip -f "$PROJECT".both.map;
 
 echo `date`" - Adjusting number of mismatches for C->T errors in mapping"
 sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
