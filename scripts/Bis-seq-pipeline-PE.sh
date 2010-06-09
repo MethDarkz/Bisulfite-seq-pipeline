@@ -1,5 +1,6 @@
-#!/bin/bash -e
+#!/bin/bash -e 
 
+#Check for existence of all necessary files and tools
 if [ ! -e "$1" ]; then
   echo "$1"" does not exist!";
   exit 1;
@@ -17,6 +18,11 @@ if [ ! -e "$FASTQ2" ]; then
   exit 1;
 fi
 
+if [ ! -e "$PIPELINE_PATH"/sql/Bis-seq-PE.schema ]; then
+  echo "$PIPELINE_PATH""/sql/Bis-seq-PE.schema does not exist!";
+  exit 1;
+fi
+
 #init the database
 echo `date`" - Initialising the database";
 rm -f "$PROJECT".db;
@@ -24,20 +30,27 @@ sqlite3 "$PROJECT".db < "$PIPELINE_PATH"/sql/Bis-seq-PE.schema;
 
 #Convert fastq into csv
 echo `date`" - Importing reads into the database";
-gunzip -c "$FASTQ1"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq1.csv;
-gunzip -c "$FASTQ2"  | awk 'NR%4==1 || NR%4==2 || NR%4==0' | sed -e 's/ .*//' | sed -e 'N' -e 'N' -e 's/\//,/' -e 's/\n/,/g' -e 's/^@//' >"$PROJECT".fastq2.csv;
 #Import FW & RV seqs in db, one row per read id
-awk -v file2="$PROJECT".fastq2.csv 'BEGIN {FS=","} {
+gunzip -c "$FASTQ1" |awk -v file2="$FASTQ2" 'BEGIN {
+  FS="/"
+  cmd="gunzip -c " file2
+} {
+  readname=$1
+  getline FWseq
+  getline
+  getline FWqual
+
+  cmd | getline
+  cmd | getline RVseq
+  cmd | getline
+  cmd | getline RVqual
+  
   tmp1=$1
   tmp2=$3
   tmp3=$4
   getline < file2
-  print tmp1","tmp2","$3","tmp3","$4
-}' "$PROJECT".fastq1.csv | gzip -c > "$PROJECT".reads.csv.gz;
-gzip -f "$PROJECT".fastq1.csv;
-gzip -f "$PROJECT".fastq2.csv;
-gunzip -c "$PROJECT".reads.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' | sqlite3 "$PROJECT".db '.import /dev/stdin reads';
-
+  print readname "|" FWseq "|" RVseq "|" FWqual "|" RVqual
+}' | sed 's/^@//' | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin reads';
 
 #Convert C residues in reads to T
 echo `date`" - Bisulfite converting reads";
@@ -54,7 +67,7 @@ gunzip -c "$PROJECT".plus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($M
   numRV=split($16, tmpRV, ":")-1
   if (numRV==-1) numRV=0
   if ((numFW+numRV)<maxmm) {
-    print substr($1,1,length($1)-2) "," $3 "," ($4+1) "," ($12+1) ",+," (numFW+numRV)
+    print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|" ($12+1) "|+|" (numFW+numRV)
   }
 }' | sed 's/plusU_//'> "$PROJECT".both.map.csv
 
@@ -68,7 +81,7 @@ gunzip -c "$PROJECT".minus.map.gz | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($
   numRV=split($16, tmpRV, ":")-1
   if (numRV==-1) numRV=0
   if ((numFW+numRV)<maxmm) {
-    print substr($1,1,length($1)-2) "," $3 "," ($12+1) "," ($4+1) ",-," (numFW+numRV)
+    print substr($1,1,length($1)-2) "|" $3 "|" ($12+1) "|" ($4+1) "|-|" (numFW+numRV)
   }
 }' | sed 's/minusU_//'>> "$PROJECT".both.map.csv
 
@@ -77,7 +90,7 @@ gzip -f "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo `date`" - Getting the reference sequence of reads mapping positions"
-sort --field-separator="," -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS=","}
+sort -f"|" -k2,2 -k3,3n "$PROJECT".both.map.csv | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS="|"}
 function revComp(temp) {
     for(i=length(temp);i>=1;i--) {
         tempChar = substr(temp,i,1)
@@ -104,12 +117,12 @@ function revComp(temp) {
         printf(",%s\n",RV)
     }
 }' | gzip -c > "$PROJECT".both.reference.csv.gz;
-gunzip -c "$PROJECT".both.reference.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
+gunzip -c "$PROJECT".both.reference.csv.gz | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
 gzip -f "$PROJECT".both.map.csv;
 
 echo `date`" - Adjusting number of mismatches for C->T errors in mapping"
-sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
-  FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS=","} {
+sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
+  FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS="|"} {
 	mm=0;
     for(i=1;i<=bp;i++) {
         	temp1 = substr($7,i,1)
@@ -123,13 +136,13 @@ sqlite3 -csv "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequen
     		if (temp2!="G"&&temp2!="A") mm++;
     	} else if (temp1!=temp2) mm++;
     }
-    print $1","$2","$3","$4","$5","mm","$7","$8
+    print $1"|"$2"|"$3"|"$4"|"$5"|"mm"|"$7"|"$8
 }' | gzip -c > "$PROJECT".both.adjust.csv.gz;
-gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
+gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
 
 #Combine forward and reverse strand mappings, filter out duplicates
 echo `date`" - Combining and filtering forward and reverse mappings";
-gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "," -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = ","} {
+gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
     s = $1
     if (s != prevs) {
         if ( FNR > 1 ) {
@@ -147,14 +160,14 @@ END {
 }' | gzip -c > "$PROJECT".map.csv.gz;
 
 #import into the db
-gunzip -c "$PROJECT".map.csv.gz | sort -t "," -k1,1 | sed -e 's/,/|/g' |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
+gunzip -c "$PROJECT".map.csv.gz | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
 
 #export db into SAM files, keep strands separate
 echo `date`" - Exporting database to BAM files"
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.plus.sam;
-sqlite3 -csv "$PROJECT".db "SELECT
+sqlite3 "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
 	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
 	function revComp(temp) {
 		for(i=length(temp);i>=1;i--) {
@@ -182,9 +195,9 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
-sqlite3 -csv "$PROJECT".db "SELECT
+sqlite3 "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = ","} 
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
 	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
 	function revComp(temp) {
 		for(i=length(temp);i>=1;i--) {

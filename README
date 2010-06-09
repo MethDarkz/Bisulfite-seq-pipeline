@@ -9,3 +9,4 @@ Requires:
 * samtools
 
 NOTE: At the moment, only the Paired End Bisulfite sequencing pipeline is in working order
+
