@@ -54,6 +54,9 @@ gunzip -c "$FASTQ1" |awk -v file2="$FASTQ2" 'BEGIN {
 
 #Convert C residues in reads to T
 echo `date`" - Bisulfite converting reads";
+#setup named pipes
+rm -f fastq1 fastq2;
+mkfifo fastq1 fastq2;
 gunzip -c "$FASTQ1" | sed -e 's/ .*//' -e '2~4s/C/T/g' > "$PROJECT".conv.fastq1;
 gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
@@ -68,6 +71,10 @@ echo `date`" - Bowtie mapping against forward strand";
     print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|" ($12+1) "|+|" (numFW+numRV)
   }
 }' | sed 's/plusU_//'> "$PROJECT".both.map;
+
+#re-setup named pipes for mapping against reverse strand
+gunzip -c "$FASTQ1" | sed -e 's/ .*//' -e '2~4s/C/T/g' > fastq1 &
+gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > fastq2 &
 
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
@@ -103,14 +110,14 @@ function revComp(temp) {
     }
     FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
     RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
-    printf("%s,%s,%s,%s,%s,%s,",$1,$2,$3,$4,$5,$6)
+    printf("%s|%s|%s|%s|%s|%s|",$1,$2,$3,$4,$5,$6)
     if ($5=="+") {
-        printf("%s,",FW)
+        printf("%s|",FW)
         revComp(RV)
         printf("\n")
     } else {
         revComp(FW)
-        printf(",%s\n",RV)
+        printf("|%s\n",RV)
     }
 }' | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
 gzip -f "$PROJECT".both.map;
@@ -135,8 +142,7 @@ sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
 }' | gzip -c > "$PROJECT".both.adjust.csv.gz;
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
 
-#Combine forward and reverse strand mappings, filter out duplicates
-echo `date`" - Combining and filtering forward and reverse mappings";
+echo `date`" - Combining  forward and reverse mappings and filtering out duplicate mappings";
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
     s = $1
     if (s != prevs) {
@@ -152,12 +158,8 @@ gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 6,6n  | awk -v m
 }
 END {
 	if ( prevval<=maxmm && valdiff>=mindiff) print prevline
-}' | gzip -c > "$PROJECT".map.csv.gz;
+}' | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
 
-#import into the db
-gunzip -c "$PROJECT".map.csv.gz | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
-
-#export db into SAM files, keep strands separate
 echo `date`" - Exporting database to BAM files"
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.plus.sam;
 sqlite3 "$PROJECT".db "SELECT
