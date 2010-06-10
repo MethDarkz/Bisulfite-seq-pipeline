@@ -1,9 +1,9 @@
 CREATE TABLE reads (
 	id char(40) NOT NULL PRIMARY KEY,
-	sequenceFW char(75) NOT NULL,
-	sequenceRV char(75) NOT NULL,
-	qualityFW char(75) NOT NULL,
-	qualityRV char(75) NOT NULL
+	sequenceFW char(150) NOT NULL,
+	sequenceRV char(150) NOT NULL,
+	qualityFW char(150) NOT NULL,
+	qualityRV char(150) NOT NULL
 );
 
 CREATE TABLE mappingBoth (
@@ -13,8 +13,8 @@ CREATE TABLE mappingBoth (
 	positionRV integer NOT NULL CHECK (positionFW >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
-	referenceFW char(75) NOT NULL,
-	referenceRV char(75) NOT NULL,
+	referenceFW char(150) NOT NULL,
+	referenceRV char(150) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 CREATE INDEX mappingBoth_ind ON mappingBoth (id);
@@ -26,8 +26,8 @@ CREATE TABLE mappingAdjust (
 	positionRV integer NOT NULL CHECK (positionFW >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
-	referenceFW char(75) NOT NULL,
-	referenceRV char(75) NOT NULL,
+	referenceFW char(150) NOT NULL,
+	referenceRV char(150) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 
@@ -38,8 +38,8 @@ CREATE TABLE mapping (
 	positionRV integer NOT NULL CHECK (positionFW >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
-	referenceFW char(75) NOT NULL,
-	referenceRV char(75) NOT NULL,
+	referenceFW char(150) NOT NULL,
+	referenceRV char(150) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 CREATE INDEX mapping_ind ON mapping (id);

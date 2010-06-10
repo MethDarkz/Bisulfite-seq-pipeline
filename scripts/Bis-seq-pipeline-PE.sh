@@ -1,34 +1,40 @@
 #!/bin/bash -e 
 
-#Check for existence of all necessary files and tools
+#set default paths - if these tools are within the $PATH then this script will work fine without them being defined in the .config
+BOWTIE_PATH=""
+SAMTOOLS_PATH=""
+R_PATH=""
+
+#Load the config file
 if [ ! -e "$1" ]; then
   echo "$1"" does not exist!";
+  echo "Usage: Bis-seq-pipeline-PE.sh [configfile]";
   exit 1;
 fi
 
+echo `date`" - Reading config file: $1";
 source "$1";
 
-if [ ! -e "$FASTQ1" ]; then
-  echo "$FASTQ1"" does not exist!";
-  exit 1;
-fi
+#Check for existence of necessary files
+if [ ! -e "$FASTQ1" ]; then echo "$FASTQ1 does not exist!"; exit 1; fi
+if [ ! -e "$FASTQ2" ]; then echo "$FASTQ2 does not exist!"; exit 1; fi
+if [ ! -e "$PIPELINE_PATH"/sql/Bis-seq-PE.schema ]; then echo "$PIPELINE_PATH""/sql/Bis-seq-PE.schema does not exist!"; exit 1; fi
+if [ ! -e "$PIPELINE_PATH"/scripts/readChr.awk ]; then echo "$PIPELINE_PATH""/scripts/readChr.awk does not exist!"; exit 1; fi
+if [ ! -e "$GENOME_PATH"/plus.1.ebwt ]; then echo "Forward bowtie index not found at $GENOME_PATH"; exit 1; fi
+if [ ! -e "$GENOME_PATH"/minus.1.ebwt ]; then echo "Reverse bowtie index not found at $GENOME_PATH"; exit 1; fi
 
-if [ ! -e "$FASTQ2" ]; then
-  echo "$FASTQ2"" does not exist!";
-  exit 1;
-fi
 
-if [ ! -e "$PIPELINE_PATH"/sql/Bis-seq-PE.schema ]; then
-  echo "$PIPELINE_PATH""/sql/Bis-seq-PE.schema does not exist!";
-  exit 1;
-fi
+#check for existence of necessary tools 
+if [ ! type -P sqlite3 &>/dev/null ]; then echo "sqlite3 command not found."; exit 1; fi
+if [ ! type -P "$BOWTIE_PATH/bowtie" &>/dev/null ]; then echo "$BOWTIE_PATH/bowtie command not found."; exit 1; fi
+if [ ! type -P "$SAMTOOLS_PATH/samtools" &>/dev/null ]; then echo "$SAMTOOLS_PATH/samtools command not found."; exit 1; fi
+if [ ! type -P "$R_PATH/R" &>/dev/null ]; then echo "$R_PATH/R command not found."; exit 1; fi
 
 #init the database
 echo `date`" - Initialising the database";
 rm -f "$PROJECT".db;
 sqlite3 "$PROJECT".db < "$PIPELINE_PATH"/sql/Bis-seq-PE.schema;
 
-#Convert fastq into csv
 echo `date`" - Importing reads into the database";
 #Import FW & RV seqs in db, one row per read id
 gunzip -c "$FASTQ1" |awk -v file2="$FASTQ2" 'BEGIN {
@@ -55,8 +61,6 @@ gunzip -c "$FASTQ1" |awk -v file2="$FASTQ2" 'BEGIN {
 #Convert C residues in reads to T
 echo `date`" - Bisulfite converting reads";
 #setup named pipes
-rm -f fastq1 fastq2;
-mkfifo fastq1 fastq2;
 gunzip -c "$FASTQ1" | sed -e 's/ .*//' -e '2~4s/C/T/g' > "$PROJECT".conv.fastq1;
 gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
@@ -187,8 +191,8 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 	rev($9)
 }' >> "$PROJECT".mappings.plus.sam;
 "$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
-"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sort;
-"$SAMTOOLS_PATH"/samtools index "$PROJECT".mappings.plus.sort.bam;
+"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".plus;
+"$SAMTOOLS_PATH"/samtools index "$PROJECT".plus.bam;
 rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
@@ -217,8 +221,8 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" |
 	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
 }' >> "$PROJECT".mappings.minus.sam;
 "$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
-"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sort;
-"$SAMTOOLS_PATH"/samtools index "$PROJECT".mappings.minus.sort.bam;
+"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".minus;
+"$SAMTOOLS_PATH"/samtools index "$PROJECT".minus.bam;
 rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
 
 #create bed & Rdata (GD) file for coverage mapping for each strand
@@ -278,10 +282,12 @@ sqlite3 -csv "$PROJECT".db "SELECT reads.sequenceFW, reads.sequenceRV, mapping.r
 	refC=refC+split($3,tmp,"C")-1
 	refC=refC+split($4,tmp,"G")-1
 } END {
-	print readC","refC
-}' > "$PROJECT".conversion;
+	print "No of C residues in the read sequences: " readC
+	print "No of C residues in the reference sequences: " refC
+}' >> "$PROJECT".context;
 
 NUM_READS=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads;"`;
+NUM_REPORTED=`sqlite3 "$PROJECT".db "SELECT COUNT(DISTINCT id) FROM mappingBoth;"`;
 NUM_UNIQUE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM mapping;"`;
 NUM_UNMAPPABLE=`sqlite3 "$PROJECT".db "SELECT COUNT(id) FROM reads \
 WHERE id NOT IN(SELECT id FROM mappingBoth);"`;
@@ -292,7 +298,7 @@ AND id NOT IN (SELECT id FROM mapping);"`;
 #Creating mapping log
 echo `date`" - Creating mapping log"
 echo "# reads processed: $NUM_READS" > mapping.log;
-echo "# reads with at least one reported alignment: $NUM_UNIQUE" >> mapping.log;
+echo "# reads with at least one reported alignment: $NUM_REPORTED" >> mapping.log;
 echo "# reads that failed to align: $NUM_UNMAPPABLE" >> mapping.log;
 echo "# reads with alignments suppressed due to -m: $NUM_MULTIPLE" >> mapping.log;
 echo "Reported $NUM_UNIQUE alignments to 1 output stream(s)" >> mapping.log;
