@@ -30,10 +30,7 @@ Workflow
     cp ~/workspace/Bisulfite-seq-pipeline/data/genome.config .
     ~/workspace/Bisulfite-seq-pipeline/make_bis_ref.sh genome.conf
   
-  -> This script in silico bisulfite converts each fasta file for both the plus and minus strands of the genome, and places the output into
-     the plusU/ and minusU/ directories respectively. The bowtie-build program is then called to create separate bowtie indexes for each
-     strand (This may take some hours and hard drive space - an index of the human hg18 reference uses ). Additionally some extra files are
-     created for downstream applications:
+  -> This script in silico bisulfite converts each fasta file for both the plus and minus strands of the genome, and places the output into the plusU/ and minusU/ directories respectively. The bowtie-build program is then called to create separate bowtie indexes for each strand (This may take some hours and hard drive space - an index of the human hg18 reference uses ). Additionally some extra files are created for downstream applications:
      
      reflist      - contains the name of each reference chromosome 
      CpGsites.csv - contains the position of every CpG site in the reference genome in "chromosome,position" format
@@ -60,8 +57,7 @@ Workflow
 
   * Run Bis-seq-pipeline-PE.sh with your config file created above as its argument
 
-  -> This script goes through multiple steps and will take hours to run (A 75bp PE experiment took ~6 hours to map to the human genome hg18
-     reference using 7 cores during the bowtie step). A sample output (on only 250,000 reads) would look like:
+  -> This script goes through multiple steps and will take hours to run (A 75bp PE experiment took ~6 hours to map to the human genome hg18 reference using 7 cores during the bowtie step). A sample output (on only 250,000 reads) would look like:
 
      ~/workspace/Bisulfite-seq-pipeline/scripts/Bis-seq-pipeline-PE.sh test.config     
      Thu Jun 10 20:27:04 EST 2010 - Reading config file: test.config
@@ -84,8 +80,7 @@ Workflow
 
 4. Outputs
 
-  * Alignments to the plus and minus strands are exported in separate BAM format files - sorted and indexed for downstream analysis or
-    viewing using samtools tview.
+  * Alignments to the plus and minus strands are exported in separate BAM format files - sorted and indexed for downstream analysis or viewing using samtools tview.
   * Similarly, alignments are exported in separate bed files, and converted into BSgenome GenomeData objects for analysis in R.
   * A summary of alignment success is placed in the mapping.log file, for example:
   
@@ -99,26 +94,24 @@ Workflow
   
         135 AA
          65 AC
-	  23987 AG
-	     69 AT
-	  30149 CA
-	  19427 CC
-	 320437 CG
-	  24449 CT
-	    135 GA
-	    108 GC
-	  18723 GG
-	     74 GT
-	    146 TA
-	    141 TC
-	  30154 TG
-	    124 TT
-	No of C residues in the read sequences: 468323
-	No of C residues in the reference sequences: 4608038
+      23987 AG
+         69 AT
+      30149 CA
+      19427 CC
+     320437 CG
+      24449 CT
+        135 GA
+        108 GC
+      18723 GG
+         74 GT
+        146 TA
+        141 TC
+      30154 TG
+        124 TT
+    No of C residues in the read sequences: 468323
+    No of C residues in the reference sequences: 4608038
     
-  * In this sample, 468323 C residues occurred in the aligned read sequences, whereas 4608038 C residues appear in the corresponding reference
-	locations, giving a bisulfite conversion efficiency of 89.83%. However, 320437 of these C residues occur in the CpG context where DNA
-	methylation mostly occurs in mammals, so the non-CpG conversion efficienty is actually 96.79%.
+  * In this sample, 468323 C residues occurred in the aligned read sequences, whereas 4608038 C residues appear in the corresponding reference locations, giving a bisulfite conversion efficiency of 89.83%. However, 320437 of these C residues occur in the CpG context where DNA methylation mostly occurs in mammals, so the non-CpG conversion efficienty is actually 96.79%.
 
 
 5. Downstream steps
