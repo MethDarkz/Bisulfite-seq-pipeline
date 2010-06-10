@@ -86,7 +86,7 @@ gzip -f "$PROJECT".conv.fastq2;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo `date`" - Getting the reference sequence of reads mapping positions"
-sort -f"|" -k2,2 -k3,3n "$PROJECT".both.map | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS="|"}
+sort -t "|" -k2,2 -k3,3n "$PROJECT".both.map | awk -v readLength="$READ_LENGTH" -v pipeline="$PIPELINE_PATH" -v genomePath="$GENOME_PATH" 'BEGIN {FS="|"}
 function revComp(temp) {
     for(i=length(temp);i>=1;i--) {
         tempChar = substr(temp,i,1)
