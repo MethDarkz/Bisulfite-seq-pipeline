@@ -1,9 +1,9 @@
 #!/bin/bash -e 
 
 #set default paths - if these tools are within the $PATH then this script will work fine without them being defined in the .config
-BOWTIE_PATH=""
-SAMTOOLS_PATH=""
-R_PATH=""
+BOWTIE_PATH="bowtie"
+SAMTOOLS_PATH="samtools"
+R_PATH="R"
 
 #Load the config file
 if [ ! -e "$1" ]; then
@@ -23,12 +23,11 @@ if [ ! -e "$PIPELINE_PATH"/scripts/readChr.awk ]; then echo "$PIPELINE_PATH""/sc
 if [ ! -e "$GENOME_PATH"/plus.1.ebwt ]; then echo "Forward bowtie index not found at $GENOME_PATH"; exit 1; fi
 if [ ! -e "$GENOME_PATH"/minus.1.ebwt ]; then echo "Reverse bowtie index not found at $GENOME_PATH"; exit 1; fi
 
-
 #check for existence of necessary tools 
 if [ ! type -P sqlite3 &>/dev/null ]; then echo "sqlite3 command not found."; exit 1; fi
-if [ ! type -P "$BOWTIE_PATH/bowtie" &>/dev/null ]; then echo "$BOWTIE_PATH/bowtie command not found."; exit 1; fi
-if [ ! type -P "$SAMTOOLS_PATH/samtools" &>/dev/null ]; then echo "$SAMTOOLS_PATH/samtools command not found."; exit 1; fi
-if [ ! type -P "$R_PATH/R" &>/dev/null ]; then echo "$R_PATH/R command not found."; exit 1; fi
+if [ ! type -P "$BOWTIE_PATH" &>/dev/null ]; then echo "$BOWTIE_PATH command not found."; exit 1; fi
+if [ ! type -P "$SAMTOOLS_PATH" &>/dev/null ]; then echo "$SAMTOOLS_PATH command not found."; exit 1; fi
+if [ ! type -P "$R_PATH" &>/dev/null ]; then echo "$R_PATH command not found."; exit 1; fi
 
 #init the database
 echo `date`" - Initialising the database";
@@ -66,7 +65,7 @@ gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > "$PROJECT".conv.fastq2;
 
 #Map against forward strand, and filter out reads with too many MMs
 echo `date`" - Bowtie mapping against forward strand";
-"$BOWTIE_PATH"/bowtie --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log |  sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+"$BOWTIE_PATH" --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.plus.log |  sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
   if (numFW==-1) numFW=0
   numRV=split($16, tmpRV, ":")-1
@@ -82,7 +81,7 @@ gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > fastq2 &
 
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
-"$BOWTIE_PATH"/bowtie --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+"$BOWTIE_PATH" --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
   numFW=split($8, tmpFW, ":")-1
   if (numFW==-1) numFW=0
   numRV=split($16, tmpRV, ":")-1
@@ -190,9 +189,9 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" |
 	revComp($7)
 	rev($9)
 }' >> "$PROJECT".mappings.plus.sam;
-"$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
-"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.plus.bam "$PROJECT".plus;
-"$SAMTOOLS_PATH"/samtools index "$PROJECT".plus.bam;
+"$SAMTOOLS_PATH" import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
+"$SAMTOOLS_PATH" sort "$PROJECT".mappings.plus.bam "$PROJECT".plus;
+"$SAMTOOLS_PATH" index "$PROJECT".plus.bam;
 rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
@@ -220,9 +219,9 @@ FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" |
 	rev($8)
 	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
 }' >> "$PROJECT".mappings.minus.sam;
-"$SAMTOOLS_PATH"/samtools import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
-"$SAMTOOLS_PATH"/samtools sort "$PROJECT".mappings.minus.bam "$PROJECT".minus;
-"$SAMTOOLS_PATH"/samtools index "$PROJECT".minus.bam;
+"$SAMTOOLS_PATH" import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
+"$SAMTOOLS_PATH" sort "$PROJECT".mappings.minus.bam "$PROJECT".minus;
+"$SAMTOOLS_PATH" index "$PROJECT".minus.bam;
 rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
 
 #create bed & Rdata (GD) file for coverage mapping for each strand
@@ -230,8 +229,8 @@ echo `date`" - Creating coverage bed and GenomeData files";
 sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='+';" | gzip -c > "$PROJECT".plus.bed.gz;
 sqlite3 -csv "$PROJECT".db "SELECT chr, positionFW, positionRV FROM mapping WHERE strand='-';" | gzip -c > "$PROJECT".minus.bed.gz;
 
-"$R_PATH"/R --vanilla --slave --args "$PROJECT".plus.bed.gz "$PROJECT".plus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
-"$R_PATH"/R --vanilla --slave --args "$PROJECT".minus.bed.gz "$PROJECT".minus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
+"$R_PATH" --vanilla --slave --args "$PROJECT".plus.bed.gz "$PROJECT".plus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
+"$R_PATH" --vanilla --slave --args "$PROJECT".minus.bed.gz "$PROJECT".minus.Rdata "$READ_LENGTH" < "$PIPELINE_PATH"/scripts/bed2GD.R;
 
 #Are C's found in CpG sites?
 echo `date`" - Determining context of C residues"

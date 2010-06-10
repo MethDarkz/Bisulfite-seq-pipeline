@@ -26,7 +26,7 @@ do
 done
 
 echo -e "Creating bowtie index of the plus strand";
-ls plusU/*.fa | sed -e :a -e '$!N;s/\n/,/;ta' -e 's/$/ plus/' | xargs -L 2 "$BOWTIE_PATH"/bowtie-build;
+ls plusU/*.fa | sed -e :a -e '$!N;s/\n/,/;ta' -e 's/$/ plus/' | xargs -L 2 "$BOWTIE_BUILD";
 
 echo -e "Creating bowtie index of the minus strand";
-ls minusU/*.fa | sed -e :a -e '$!N;s/\n/,/;ta' -e 's/$/ minus/' | xargs -L 2 "$BOWTIE_PATH"/bowtie-build;
+ls minusU/*.fa | sed -e :a -e '$!N;s/\n/,/;ta' -e 's/$/ minus/' | xargs -L 2 "$BOWTIE_BUILD";

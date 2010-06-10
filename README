@@ -4,9 +4,10 @@ Written by Aaron Statham (a.statham@garvan.org.au)
 A PhD student in the Cancer Epigenetics lab at the Garvan Institute of Medical Research, Sydney, Australia
 
 Requires:
+* bowtie (http://bowtie-bio.sourceforge.net/index.shtml - tested with version 0.11.3)
 * sqlite3 (tested with version 3.6.22)
-* samtools (from http://samtools.sourceforge.net/ - tested with 0.1.7-6 r530)
-* R (http://www.r-project.org/ - tested with version 2.11)
+* samtools (from http://samtools.sourceforge.net/ - tested with version 0.1.7-6 r530)
+* R (http://www.r-project.org/ - tested with version 2.11.0)
 * BSgenome package for R (http://bioconductor.org/ - tested with version 1.16.1) 
 
 NOTE: At the moment, only the Paired End Bisulfite sequencing pipeline is in working order
