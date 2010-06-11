@@ -75,10 +75,6 @@ echo `date`" - Bowtie mapping against forward strand";
   }
 }' | sed 's/plusU_//'> "$PROJECT".both.map;
 
-#re-setup named pipes for mapping against reverse strand
-gunzip -c "$FASTQ1" | sed -e 's/ .*//' -e '2~4s/C/T/g' > fastq1 &
-gunzip -c "$FASTQ2" | sed -e 's/ .*//' -e '2~4s/G/A/g' > fastq2 &
-
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
 "$BOWTIE_PATH" --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus -1 "$PROJECT".conv.fastq1 -2 "$PROJECT".conv.fastq2 2> mapping.minus.log | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
