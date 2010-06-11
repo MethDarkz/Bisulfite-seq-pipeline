@@ -8,7 +8,7 @@ R_PATH="R"
 #Load the config file
 if [ ! -e "$1" ]; then
   echo "$1"" does not exist!";
-  echo "Usage: Bis-seq-pipeline-PE.sh [configfile]";
+  echo "Usage: Bis-seq-pipeline.sh [configfile]";
   exit 1;
 fi
 
@@ -17,7 +17,7 @@ source "$1";
 
 #Check for existence of necessary files
 if [ ! -e "$FASTQ" ]; then echo "$FASTQ does not exist!"; exit 1; fi
-if [ ! -e "$PIPELINE_PATH"/sql/Bis-seq-PE.schema ]; then echo "$PIPELINE_PATH""/sql/Bis-seq-PE.schema does not exist!"; exit 1; fi
+if [ ! -e "$PIPELINE_PATH"/sql/Bis-seq.schema ]; then echo "$PIPELINE_PATH""/sql/Bis-seq-PE.schema does not exist!"; exit 1; fi
 if [ ! -e "$PIPELINE_PATH"/scripts/readChr.awk ]; then echo "$PIPELINE_PATH""/scripts/readChr.awk does not exist!"; exit 1; fi
 if [ ! -e "$GENOME_PATH"/plus.1.ebwt ]; then echo "Forward bowtie index not found at $GENOME_PATH"; exit 1; fi
 if [ ! -e "$GENOME_PATH"/minus.1.ebwt ]; then echo "Reverse bowtie index not found at $GENOME_PATH"; exit 1; fi
@@ -31,61 +31,43 @@ if [ ! type -P "$R_PATH" &>/dev/null ]; then echo "$R_PATH command not found."; 
 #init the database
 echo `date`" - Initialising the database";
 rm -f "$PROJECT".db;
-sqlite3 "$PROJECT".db < "$PIPELINE_PATH"/sql/Bis-seq-PE.schema;
+sqlite3 "$PROJECT".db < "$PIPELINE_PATH"/sql/Bis-seq.schema;
 
 echo `date`" - Importing reads into the database";
-#Import FW & RV seqs in db, one row per read id
-gunzip -c "$FASTQ1" |awk -v file2="$FASTQ2" 'BEGIN {
+#Import seqs into the db, one row per read id
+gunzip -c "$FASTQ" |awk 'BEGIN {
   FS="/"
-  cmd="gunzip -c " file2
 } {
   readname=$1
-  getline FWseq
+  getline seq
   getline
-  getline FWqual
-
-  cmd | getline
-  cmd | getline RVseq
-  cmd | getline
-  cmd | getline RVqual
-  
-  tmp1=$1
-  tmp2=$3
-  tmp3=$4
-  getline < file2
-  print readname "|" FWseq "|" RVseq "|" FWqual "|" RVqual
+  getline qual
+  print readname "|" seq "|" qual
 }' | sed 's/^@//' | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin reads';
 
 #Convert C residues in reads to T
 echo `date`" - Bisulfite converting reads";
-#setup named pipes
-gunzip -c "$FASTQ" | sed -e 's/ .*//' -e '2~4s/C/T/g' > "$PROJECT".conv.fastq;
+gunzip -c "$FASTQ" | sed -e 's/ .*//' -e '2~4s/C/T/g' | gzip -c > "$PROJECT".conv.fastq.gz;
 
 #Map against forward strand, and filter out reads with too many MMs
 echo `date`" - Bowtie mapping against forward strand";
-"$BOWTIE_PATH" --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus "$PROJECT".conv.fastq 2> mapping.plus.log |  sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
-  numFW=split($8, tmpFW, ":")-1
-  if (numFW==-1) numFW=0
-  numRV=split($16, tmpRV, ":")-1
-  if (numRV==-1) numRV=0
-  if ((numFW+numRV)<maxmm) {
-    print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|" ($12+1) "|+|" (numFW+numRV)
+gunzip -c "$PROJECT".conv.fastq | "$BOWTIE_PATH" --norc "$BOWTIE_PARAMS" "$GENOME_PATH"/plus - 2> mapping.plus.log | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+  num=split($8, tmp, ":")-1
+  if (num==-1) num=0
+  if (num<maxmm) {
+    print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|+|" num
   }
 }' | sed 's/plusU_//'> "$PROJECT".both.map;
 
 #Same for reverse strand
 echo `date`" - Bowtie mapping against reverse strand";
-"$BOWTIE_PATH" --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus "$PROJECT".conv.fastq 2> mapping.minus.log | sed -e 'N' -e 's/\n/\t/' | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
-  numFW=split($8, tmpFW, ":")-1
-  if (numFW==-1) numFW=0
-  numRV=split($16, tmpRV, ":")-1
-  if (numRV==-1) numRV=0
-  if ((numFW+numRV)<maxmm) {
-    print substr($1,1,length($1)-2) "|" $3 "|" ($12+1) "|" ($4+1) "|-|" (numFW+numRV)
+gunzip -c "$PROJECT".conv.fastq | "$BOWTIE_PATH" --nofw "$BOWTIE_PARAMS" "$GENOME_PATH"/minus - 2> mapping.plus.log | awk -v maxmm=$(($MAX_MM+$MIN_MM_DIFF)) 'BEGIN {FS="\t"}{
+  num=split($8, tmp, ":")-1
+  if (num==-1) num=0
+  if (num<maxmm) {
+    print substr($1,1,length($1)-2) "|" $3 "|" ($4+1) "|-|" num
   }
-}' | sed 's/minusU_//'>> "$PROJECT".both.map;
-
-gzip -f "$PROJECT".conv.fastq;
+}' | sed 's/minusU_//'> "$PROJECT".both.map;
 
 #adjust no of mismatches for C's in read that are T's in the reference
 echo `date`" - Getting the reference sequence of reads mapping positions"
@@ -104,52 +86,44 @@ function revComp(temp) {
         chr=$2
         "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
     }
-    FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
-    RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
-    printf("%s|%s|%s|%s|%s|%s|",$1,$2,$3,$4,$5,$6)
-    if ($5=="+") {
-        printf("%s|",FW)
-        revComp(RV)
-        printf("\n")
+    seq=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
+    printf("%s|%s|%s|%s|%s|",$1,$2,$3,$4,$5)
+    if ($4=="+") {
+        printf("%s\n",seq)
     } else {
-        revComp(FW)
-        printf("|%s\n",RV)
+        revComp(seq)
+        printf("\n")
     }
 }' | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mappingBoth'
 gzip -f "$PROJECT".both.map;
 
 echo `date`" - Adjusting number of mismatches for C->T errors in mapping"
-sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
+sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequence
   FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS="|"} {
     mm=0;
     for(i=1;i<=bp;i++) {
-            temp1 = substr($7,i,1)
-        temp2 = substr($9,i,1)
+        temp1 = substr($6,i,1)
+        temp2 = substr($7,i,1)
         if (temp1=="C") {
             if (temp2!="C"&&temp2!="T") mm++;
         } else if (temp1!=temp2) mm++;
-        temp1 = substr($8,i,1)
-        temp2 = substr($10,i,1)
-        if (temp1=="G") {
-            if (temp2!="G"&&temp2!="A") mm++;
-        } else if (temp1!=temp2) mm++;
     }
-    print $1"|"$2"|"$3"|"$4"|"$5"|"mm"|"$7"|"$8
+    print $1"|"$2"|"$3"|"$4"|"mm"|"$6
 }' | gzip -c > "$PROJECT".both.adjust.csv.gz;
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
 
 echo `date`" - Combining  forward and reverse mappings and filtering out duplicate mappings";
-gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
+gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 5,5n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
     s = $1
     if (s != prevs) {
         if ( FNR > 1 ) {
             if ( prevval<=maxmm && valdiff>=mindiff) print prevline
         }
-        prevval = $6
+        prevval = $5
         prevline = $0
         valdiff = mindiff
     }
-    else valdiff = prevval-$6
+    else valdiff = prevval-$5
     prevs = s
 }
 END {
@@ -159,7 +133,7 @@ END {
 echo `date`" - Exporting database to BAM files"
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.plus.sam;
 sqlite3 "$PROJECT".db "SELECT
-mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
+mapping.id, mapping.chr, mapping.strand, mapping.position, reads.sequence, reads.quality
 FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
     function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
     function revComp(temp) {
@@ -189,7 +163,7 @@ rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
 
 cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
 sqlite3 "$PROJECT".db "SELECT
-mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
+mapping.id, mapping.chr, mapping.strand, mapping.position, reads.sequence, reads.quality
 FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
     function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
     function revComp(temp) {

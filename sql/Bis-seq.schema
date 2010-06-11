@@ -1,16 +1,16 @@
 CREATE TABLE reads (
 	id char(40) NOT NULL PRIMARY KEY,
 	sequence char(150) NOT NULL,
-	quality char(150) NOT NULL,
+	quality char(150) NOT NULL
 );
 
 CREATE TABLE mappingBoth (
 	id char(40) NOT NULL,
 	chr char(5) NOT NULL,
-	position integer NOT NULL CHECK (positionFW >= 0),
+	position integer NOT NULL CHECK (position >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
-	referenceFW char(150) NOT NULL,
+	reference char(150) NOT NULL,
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 CREATE INDEX mappingBoth_ind ON mappingBoth (id);
@@ -18,7 +18,7 @@ CREATE INDEX mappingBoth_ind ON mappingBoth (id);
 CREATE TABLE mappingAdjust (
 	id char(40) NOT NULL,
 	chr char(5) NOT NULL,
-	position integer NOT NULL CHECK (positionFW >= 0),
+	position integer NOT NULL CHECK (position >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
 	reference char(150) NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE mappingAdjust (
 CREATE TABLE mapping (
 	id char(40) NOT NULL Unique,
 	chr char(5) NOT NULL,
-	position integer NOT NULL CHECK (positionFW >= 0),
+	position integer NOT NULL CHECK (position >= 0),
 	strand char(1) NOT NULL CHECK (strand=="+" OR strand=="-"),
 	MMs integer NOT NULL CHECK (MMS >= 0),
 	reference char(150) NOT NULL,
