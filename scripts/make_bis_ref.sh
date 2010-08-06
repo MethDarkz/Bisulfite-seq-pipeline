@@ -7,7 +7,7 @@ fi
 source "$1";
 
 mkdir -p plusU minusU;
-rm -f samdir reflist CpGsites.csv;
+rm -f samdir reflist CpGsites.csv Csites.csv Gsites.csv;
 grep -h "^>" *.fa | sed 's/^>//' > reflist;
 for file in *.fa;
 do
@@ -22,7 +22,16 @@ do
 	echo -e "@SQ\tSN:""${file%.fa}""\tLN:$(( $(awk -f "$PIPELINE_PATH"/scripts/readChr.awk "$file" | wc -c) - 1 ))" >> samdir;
 
 #Record the position of every CpG site
-	awk -f ~/analysis-utils/ChIP-seq-pipeline/scripts/readChr.awk "$file" | grep -bo [cC][gG] | awk -v chr="${file%.fa}" 'BEGIN {FS=":"} {print chr "," ($1+1)}' >> CpGsites.csv;
+    awk -f ~/workspace/Bisulfite-seq-pipeline/scripts/readChr.awk $file | grep -bo [cCgG] | awk -v chr="${file%.fa}" 'BEGIN {
+        "awk -f ~/workspace/Bisulfite-seq-pipeline/scripts/readChr.awk " chr ".fa" | getline chrSeq;
+        FS=":";
+    } {
+        temp = toupper(substr(chrSeq, $1, 3))
+        if (substr(temp, 2, 1)=="C") {
+            if (substr(temp, 3, 1)=="G") print chr "," $1+1 ",CG" >> "CpGsites.csv"
+            else print chr "," $1+1 ",CH" >> "Csites.csv"
+        } else print chr "," $1 ",DG" >> "Gsites.csv"
+    }'
 done
 
 echo -e "Creating bowtie index of the plus strand";
