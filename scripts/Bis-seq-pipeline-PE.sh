@@ -160,65 +160,19 @@ END {
 }' | sort -t "|" -k1,1 |  sqlite3 "$PROJECT".db '.import /dev/stdin mapping'
 
 echo `date`" - Exporting database to BAM files"
-cp "$GENOME_PATH"/samdir "$PROJECT".mappings.plus.sam;
 sqlite3 "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
-	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
-	function revComp(temp) {
-		for(i=length(temp);i>=1;i--) {
-			tempChar = substr(temp,i,1)
-			if (tempChar=="A") {printf("T")} else
-			if (tempChar=="C") {printf("G")} else
-			if (tempChar=="G") {printf("C")} else
-			if (tempChar=="T") {printf("A")} else
-			{printf("N")}
-		}
-		printf("\t")
-	}
-	function rev(temp) {
-		for(i=length(temp);i>=1;i--) printf(substr(temp,i,1))
-		printf("\n")
-	} {
-	print $1 "\t99\t" $2 "\t" $4 "\t255\t"readLength"M\t=\t" $6 "\t" (abs($6-$4)+readLength) "\t" $5 "\t" $8
-	printf("%s\t147\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,$2,$6,$4,(abs($6-$4)+readLength))
-	revComp($7)
-	rev($9)
-}' >> "$PROJECT".mappings.plus.sam;
-"$SAMTOOLS_PATH" import "$GENOME_PATH"/reflist "$PROJECT".mappings.plus.sam "$PROJECT".mappings.plus.bam;
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='+';" | awk -v readLength="$READ_LENGTH" -v strand=+ -f "$PIPELINE_PATH"/scripts/createSAM.awk | "$SAMTOOLS_PATH" view -bt "$GENOME_PATH"/reflengths - > "$PROJECT".mappings.plus.bam    
 "$SAMTOOLS_PATH" sort "$PROJECT".mappings.plus.bam "$PROJECT".plus;
 "$SAMTOOLS_PATH" index "$PROJECT".plus.bam;
-rm "$PROJECT".mappings.plus.bam "$PROJECT".mappings.plus.sam;
+rm "$PROJECT".mappings.plus.bam;
 
-cp "$GENOME_PATH"/samdir "$PROJECT".mappings.minus.sam;
 sqlite3 "$PROJECT".db "SELECT
 mapping.id, mapping.chr, mapping.strand, mapping.positionFW, reads.sequenceFW, mapping.positionRV, reads.sequenceRV, reads.qualityFW, reads.qualityRV
-FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" 'BEGIN {FS = "|"} 
-	function abs(x){return (((x < 0.0) ? -x : x) + 0.0)}
-	function revComp(temp) {
-		for(i=length(temp);i>=1;i--) {
-			tempChar = substr(temp,i,1)
-			if (tempChar=="A") {printf("T")} else
-			if (tempChar=="C") {printf("G")} else
-			if (tempChar=="G") {printf("C")} else
-			if (tempChar=="T") {printf("A")} else
-			{printf("N")}
-		}
-		printf("\t")
-	}
-	function rev(temp) {
-		for(i=length(temp);i>=1;i--) printf(substr(temp,i,1))
-		printf("\n")
-	} {
-	printf("%s\t83\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,$2,$4,$6,(abs($6-$4)+readLength))
-	revComp($5)
-	rev($8)
-	print $1 "\t163\t" $2 "\t" $6 "\t255\t"readLength"M\t=\t" $4 "\t" (abs($6-$4)+readLength) "\t" $7 "\t" $9
-}' >> "$PROJECT".mappings.minus.sam;
-"$SAMTOOLS_PATH" import "$GENOME_PATH"/reflist "$PROJECT".mappings.minus.sam "$PROJECT".mappings.minus.bam;
+FROM mapping LEFT JOIN reads ON mapping.id=reads.id WHERE mapping.strand='-';" | awk -v readLength="$READ_LENGTH" -v strand=- -f "$PIPELINE_PATH"/scripts/createSAM.awk | "$SAMTOOLS_PATH" view -bt "$GENOME_PATH"/reflengths - > "$PROJECT".mappings.minus.bam
 "$SAMTOOLS_PATH" sort "$PROJECT".mappings.minus.bam "$PROJECT".minus;
 "$SAMTOOLS_PATH" index "$PROJECT".minus.bam;
-rm "$PROJECT".mappings.minus.bam "$PROJECT".mappings.minus.sam;
+rm "$PROJECT".mappings.minus.bam;
 
 #create bed & Rdata (GD) file for coverage mapping for each strand
 echo `date`" - Creating coverage bed and GenomeData files";

@@ -7,7 +7,7 @@ fi
 source "$1";
 
 mkdir -p plusU minusU;
-rm -f samdir reflist CpGsites.csv Csites.csv Gsites.csv;
+rm -f reflengths reflist CpGsites.csv Csites.csv Gsites.csv;
 grep -h "^>" *.fa | sed 's/^>//' > reflist;
 for file in *.fa;
 do
@@ -19,7 +19,7 @@ do
 	sed -e '/^>/s/>/>minusU_/' -e '/^>/!s/[Gg]/a/g' "$file" > minusU/"$file";
 	
 #Record the size of each chromosome in basepairs
-	echo -e "@SQ\tSN:""${file%.fa}""\tLN:$(( $(awk -f "$PIPELINE_PATH"/scripts/readChr.awk "$file" | wc -c) - 1 ))" >> samdir;
+	echo -e "${file%.fa}""\t$(( $(awk -f "$PIPELINE_PATH"/scripts/readChr.awk "$file" | wc -c) - 1 ))" >> reflengths;
 
 #Record the position of every CpG site
     awk -f ~/workspace/Bisulfite-seq-pipeline/scripts/readChr.awk $file | grep -bo [cCgG] | awk -v chr="${file%.fa}" 'BEGIN {
