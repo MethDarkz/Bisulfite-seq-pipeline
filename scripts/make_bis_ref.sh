@@ -30,7 +30,7 @@ do
         if (substr(temp, 2, 1)=="C") {
             if (substr(temp, 3, 1)=="G") print chr "," $1+1 ",CG" >> "CpGsites.csv"
             else print chr "," $1+1 ",CH" >> "Csites.csv"
-        } else print chr "," $1 ",DG" >> "Gsites.csv"
+        } else if (substr(temp, 1, 1)!="C") print chr "," $1 ",DG" >> "Gsites.csv"
     }'
 done
 
