@@ -22,8 +22,8 @@ do
 	echo -e "${file%.fa}""\t$(( $(awk -f "$PIPELINE_PATH"/scripts/readChr.awk "$file" | wc -c) - 1 ))" >> reflengths;
 
 #Record the position of every CpG site
-    awk -f ~/workspace/Bisulfite-seq-pipeline/scripts/readChr.awk $file | grep -bo [cCgG] | awk -v chr="${file%.fa}" 'BEGIN {
-        "awk -f ~/workspace/Bisulfite-seq-pipeline/scripts/readChr.awk " chr ".fa" | getline chrSeq;
+    awk -f "$PIPELINE_PATH"/scripts/readChr.awk $file | grep -bo [cCgG] | awk -v pipeline="$PIPELINE_PATH" -v chr="${file%.fa}" 'BEGIN {
+        "awk -f "pipeline"/scripts/readChr.awk "chr".fa" | getline chrSeq
         FS=":";
     } {
         temp = toupper(substr(chrSeq, $1, 3))
