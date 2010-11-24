@@ -60,10 +60,17 @@ function printContig(FW, RV, FWq, RVq, offset) {
 #Program entry point
 { 
     if (abs($6-$4)>=readLength) { #non-overlapping reads
-	    print $1 "\t" FWflag "\t" $2 "\t" $4 "\t255\t"readLength"M\t=\t" $6 "\t" (abs($6-$4)+readLength) "\t" $5 "\t" $8
-	    printf("%s\t%s\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,RVflag,$2,$6,$4,(abs($6-$4)+readLength))
-	    printf("%s\t", revComp($7))
-	    print(rev($9))
+        if (strand=="+") {
+	        print $1 "\t" FWflag "\t" $2 "\t" $4 "\t255\t"readLength"M\t=\t" $6 "\t" (abs($6-$4)+readLength) "\t" $5 "\t" $8
+	        printf("%s\t%s\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,RVflag,$2,$6,$4,(abs($6-$4)+readLength))
+	        printf("%s\t", revComp($7))
+	        print(rev($9))
+        } else {
+	        print $1 "\t" FWflag "\t" $2 "\t" $4 "\t255\t"readLength"M\t=\t" $6 "\t" (abs($6-$4)+readLength) "\t" revComp($5) "\t" rev($8)
+	        printf("%s\t%s\t%s\t%s\t255\t"readLength"M\t=\t%s\t%s\t",$1,RVflag,$2,$6,$4,(abs($6-$4)+readLength))
+	        printf("%s\t", $7)
+	        print($9)
+        }
     } else { #ok merge reads into a contig
         if (strand=="+") {contigStart=$4} else {contigStart=$6}
         printf("%s\t%s\t%s\t%s\t255\t%sM\t*\t0\t0\t", $1, contigFlag, $2, contigStart, (abs($6-$4)+readLength))
