@@ -105,16 +105,21 @@ function revComp(temp) {
 } { #entry point
     if ($2!=chr) { #if hit a new chromosome, read it into chrSeq
         chr=$2
-        "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
+        gf = "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" 
+        gf | getline chrSeq
     }
-    FW=toupper(substr(chrSeq,$3,readLength)) #retrieve forward sequence
-    RV=toupper(substr(chrSeq,$4,readLength)) #retrieve reverse sequence
+    FW=toupper(substr(chrSeq,$3,readLength+1)) #retrieve forward sequence
+    RV=toupper(substr(chrSeq,$4,readLength+1)) #retrieve reverse sequence
     printf("%s|%s|%s|%s|%s|%s|",$1,$2,$3,$4,$5,$6)
     if ($5=="+") {
+        FW=toupper(substr(chrSeq,$3,readLength+1)) #retrieve forward sequence
+        RV=toupper(substr(chrSeq,$4,readLength+1)) #retrieve reverse sequence
         printf("%s|",FW)
         revComp(RV)
         printf("\n")
     } else {
+        FW=toupper(substr(chrSeq,$3-1,readLength+1)) #retrieve forward sequence
+        RV=toupper(substr(chrSeq,$4-1,readLength+1)) #retrieve reverse sequence
         revComp(FW)
         printf("|%s\n",RV)
     }
@@ -125,24 +130,35 @@ echo `date`" - Adjusting number of mismatches for C->T errors in mapping"
 sqlite3 "$PROJECT".db "SELECT mappingBoth.*, reads.sequenceFW, reads.sequenceRV
   FROM mappingBoth JOIN reads ON mappingBoth.id=reads.id;" | awk -v bp="$READ_LENGTH" 'BEGIN {FS="|"} {
 	mm=0;
+    refCs=0;
+	nonCpG=0;
     for(i=1;i<=bp;i++) {
-        	temp1 = substr($7,i,1)
+        temp1 = substr($7,i,1)
     	temp2 = substr($9,i,1)
+    	temp3 = substr($7,i,2)
     	if (temp1=="C") {
+    		if (temp3!="CG") refCs++;
     		if (temp2!="C"&&temp2!="T") mm++;
     	} else if (temp1!=temp2) mm++;
-    	temp1 = substr($8,i,1)
+    	if (temp2=="C" && temp1=="C" && temp3!="CG") nonCpG++;
+    	temp1 = substr($8,i+1,1)
     	temp2 = substr($10,i,1)
+    	temp3 = substr($8,i,2)
     	if (temp1=="G") {
+            if (temp3!="CG") refCs++;
+            refCs++;
     		if (temp2!="G"&&temp2!="A") mm++;
     	} else if (temp1!=temp2) mm++;
+        if (temp2=="G" && temp1=="G" && temp3!="CG") nonCpG++;
     }
-    print $1"|"$2"|"$3"|"$4"|"$5"|"mm"|"$7"|"$8
+    print $1"|"$2"|"$3"|"$4"|"$5"|"mm"|"substr($7,1,bp)"|"substr($8,2,bp)"|"refCs"|"nonCpG
 }' | gzip -c > "$PROJECT".both.adjust.csv.gz;
 gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k1,1 | sqlite3 "$PROJECT".db '.import /dev/stdin mappingAdjust'
 
-echo `date`" - Combining  forward and reverse mappings and filtering out duplicate mappings";
-gunzip -c "$PROJECT".both.adjust.csv.gz | sort -t "|" -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
+echo `date`" - Combining forward and reverse mappings and filtering out duplicate mappings and unconverted reads";
+gunzip -c "$PROJECT".both.adjust.csv.gz | awk -v cutoff="$CONV_CUTOFF" 'BEGIN {FS="|"} {
+    if ($9==0) {print $0} else if ($10/$9<=cutoff) print $0;
+}' | cut -d "|" -f1,2,3,4,5,6,7,8 |  sort -t "|" -k 1,1 -k 6,6n  | awk -v maxmm=$MAX_MM -v mindiff=$MIN_MM_DIFF 'BEGIN {FS = "|"} {
     s = $1
     if (s != prevs) {
         if ( FNR > 1 ) {
@@ -213,7 +229,8 @@ function revComp(temp) {
 } { #entry point
     if ($1!=chr) { #if hit a new chromosome, read it into chrSeq
         chr=$1
-        "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" | getline chrSeq
+        gf = "awk -f "pipeline"/scripts/readChr.awk "genomePath"/"chr".fa" 
+        gf | getline chrSeq
     }
     print(toupper(substr(chrSeq,$2,2)))
 }' | sort | uniq -c > "$PROJECT".context;

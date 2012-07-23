@@ -28,6 +28,8 @@ CREATE TABLE mappingAdjust (
 	MMs integer NOT NULL CHECK (MMS >= 0),
 	referenceFW char(150) NOT NULL,
 	referenceRV char(150) NOT NULL,
+	Cs integer NOT NULL CHECK (nonCpGs >= 0),
+	nonCpGs integer NOT NULL CHECK (nonCpGs >= 0),
 	FOREIGN KEY (id) REFERENCES reads(id)
 );
 
